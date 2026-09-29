@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { buscarEmisoras, EMISORAS, type Banda, type Emisora } from "./emisoras";
 import { useDetenido } from "../dispositivo/detenido";
 import { Futbol, avisoDeMiEquipo, usePartidos } from "./PartidosRadio";
+import { CarrerasRadio, avisoDeCarrera, useCarreras } from "./CarrerasRadio";
 
 const CLAVE_ULTIMA = "la-ramal-radio";
 const leer = () => {
@@ -39,6 +40,9 @@ export function Radio({ demo }: { demo: boolean }) {
   const { detenido } = useDetenido(demo);
   const { partidos, ejemplo } = usePartidos(demo);
   const juegaMiEquipo = avisoDeMiEquipo(partidos);
+  const { carreras, ejemplo: carrerasEjemplo } = useCarreras(demo);
+  const corre = avisoDeCarrera(carreras);
+  const [deporte, setDeporte] = useState<"futbol" | "carreras">("futbol");
 
   /** Devuelve la lista con transmisiones (la busca en el directorio la primera vez). */
   const lista = useRef(emisoras);
@@ -96,6 +100,11 @@ export function Radio({ demo }: { demo: boolean }) {
     [encender, actual, tocar],
   );
 
+  const escucharDeporte = (e: Emisora) => {
+    void encender().then((l) => tocar(l.find((x) => x.id === e.id) ?? e));
+    if (!detenido) setAbierta(false);
+  };
+
   const escuchar = async () => {
     const todas = await encender();
     void tocar(todas.find((e) => e.id === actual) ?? todas[0]!);
@@ -114,6 +123,8 @@ export function Radio({ demo }: { demo: boolean }) {
   const textoEstado =
     estado !== "sonando" && estado !== "conectando" && juegaMiEquipo
       ? `⚽ ${juegaMiEquipo.estado === "en_vivo" ? "Juega ahora" : "Hoy juega"} ${juegaMiEquipo.partido.local} – ${juegaMiEquipo.partido.visitante}`
+      : estado !== "sonando" && estado !== "conectando" && corre
+      ? `🏁 ${corre.estado === "en_vivo" ? "Se está corriendo" : `Larga en ${corre.faltaMin} min`}: ${corre.carrera.nombre}`
       : estado === "sonando" ? "Sonando" : estado === "conectando" ? "Conectando…" : estado === "error" ? (sinDirectorio ? "Sin conexión con las radios" : "Esta radio no está transmitiendo por internet ahora") : "Radio";
 
   return (
@@ -149,7 +160,15 @@ export function Radio({ demo }: { demo: boolean }) {
               No se pudo conectar con el directorio de radios. {demo ? "En la vista previa de claude.ai las radios no suenan: abrí la app desde el enlace de GitHub." : "Revisá la conexión y probá de nuevo."}
             </div>
           )}
-          <Futbol partidos={partidos} ejemplo={ejemplo} emisoras={emisoras} tocar={(e) => { void encender().then((l) => tocar(l.find((x) => x.id === e.id) ?? e)); if (!detenido) setAbierta(false); }} />
+          <div className="switch" role="tablist" aria-label="Deporte" style={{ alignSelf: "flex-start" }}>
+            <button role="tab" aria-pressed={deporte === "futbol"} onClick={() => setDeporte("futbol")}>Fútbol</button>
+            <button role="tab" aria-pressed={deporte === "carreras"} onClick={() => setDeporte("carreras")}>Carreras</button>
+          </div>
+          {deporte === "futbol" ? (
+            <Futbol partidos={partidos} ejemplo={ejemplo} emisoras={emisoras} tocar={escucharDeporte} />
+          ) : (
+            <CarrerasRadio carreras={carreras} ejemplo={carrerasEjemplo} emisoras={emisoras} tocar={escucharDeporte} />
+          )}
           <div className="switch" role="group" aria-label="Banda" style={{ alignSelf: "flex-start" }}>
             {(["FM", "AM"] as Banda[]).map((b) => (
               <button key={b} aria-pressed={banda === b} onClick={() => setBanda(b)}>{b}</button>
