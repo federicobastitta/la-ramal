@@ -75,8 +75,22 @@ export const Recibo = z.object({
   choferId: z.string().min(1),
   periodo: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Período AAAA-MM"),
   neto: z.number().nonnegative(),
+  /** Básico del mes (lo carga personal al subir el recibo). */
+  basico: z.number().nonnegative().optional(),
+  /** Monto pagado por horas extra ese mes. */
+  extras: z.number().nonnegative().optional(),
+  antiguedadAnios: z.number().int().nonnegative().optional(),
+  antiguedad: z.number().nonnegative().optional(),
+  viaticos: z.number().nonnegative().optional(),
+  presentismo: z.number().nonnegative().optional(),
+  bonoKm: z.number().nonnegative().optional(),
+  /** Quién lo subió: personal o el mismo chofer (una foto de su recibo en papel). */
+  origen: z.enum(["personal", "chofer"]).default("personal"),
+  /** Estado de la lectura automática con IA. */
+  lectura: z.enum(["pendiente", "leido", "ilegible"]).optional(),
   ruta: z.string().min(1),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  mime: z.string().default("application/pdf"),
   subidoEn: z.number().int().nonnegative(),
   conformidad: z.object({ en: z.number().int(), sha256: z.string() }).optional(),
 });
@@ -265,4 +279,125 @@ export function leerVueltas(texto: string): { vueltas: { sale: string; llega: st
       vueltas.push(v);
     });
   return { vueltas, errores };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Plata: el día 1 el chofer ya tiene ganado el básico; encima se suman las horas extra del mes.
+// El valor de la hora extra no sale de ningún supuesto: es lo que su último recibo pagó por hora extra
+// (monto de extras ÷ horas extra de sus planillas de ese mes). Es bruto y es una estimación.
+// ---------------------------------------------------------------------------------------------
+export type EstimacionPlata = {
+  basico: number;
+  horasExtraMes: number;
+  valorHoraExtra: number | null;
+  extrasMes: number;
+  estimadoMes: number;
+  ultimoRecibo: { periodo: string; neto: number; basico: number; extras: number; horasExtra: number };
+};
+
+export function estimarPlata(
+  recibos: Pick<Recibo, "periodo" | "neto" | "basico" | "extras">[],
+  planillas: Pick<Planilla, "fecha" | "vueltas" | "franco">[],
+  hoy: string,
+  jornadaHoras = 8,
+): EstimacionPlata | null {
+  const mesActual = hoy.slice(0, 7);
+  const r = [...recibos].filter((x) => x.periodo < mesActual && x.basico !== undefined).sort((a, b) => b.periodo.localeCompare(a.periodo))[0];
+  if (!r || r.basico === undefined) return null;
+  const horasExtraRecibo = horasExtra(planillas.filter((p) => p.fecha.startsWith(r.periodo)), jornadaHoras);
+  const extrasRecibo = r.extras ?? 0;
+  const valorHoraExtra = horasExtraRecibo > 0 && extrasRecibo > 0 ? extrasRecibo / horasExtraRecibo : null;
+  const horasExtraMes = horasExtra(planillas.filter((p) => p.fecha.startsWith(mesActual) && p.fecha <= hoy), jornadaHoras);
+  const extrasMes = valorHoraExtra ? Math.round(valorHoraExtra * horasExtraMes) : 0;
+  return {
+    basico: r.basico,
+    horasExtraMes,
+    valorHoraExtra: valorHoraExtra ? Math.round(valorHoraExtra) : null,
+    extrasMes,
+    estimadoMes: r.basico + extrasMes,
+    ultimoRecibo: { periodo: r.periodo, neto: r.neto, basico: r.basico, extras: extrasRecibo, horasExtra: horasExtraRecibo },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Escala salarial (CCT 460/73, UTA): la carga personal o el delegado con cada paritaria.
+// Ningún monto está escrito en el código: todo sale de la escala vigente cargada.
+// ---------------------------------------------------------------------------------------------
+export const Escala = z.object({
+  id: z.literal("vigente"),
+  lineaId: z.string().min(1),
+  desde: Fecha,
+  basico: z.number().positive(),
+  antiguedadPctPorAnio: z.number().min(0).max(5),
+  viaticoPorDia: z.number().min(0),
+  presentismo: z.number().min(0),
+  /** Recargo de la hora extra en día común (Ley 20.744, art. 201: 50 %). */
+  recargoExtraComunPct: z.number().min(0).max(300),
+  /** Domingos y feriados (100 %). */
+  recargoExtraDomingoFeriadoPct: z.number().min(0).max(300),
+  /** Recargo por hora trabajada entre las 21 y las 6. 0 = todavía no cargado. */
+  recargoNocturnoPct: z.number().min(0).max(300),
+  jornadaHoras: z.number().min(1).max(12),
+  /** Horas del mes para sacar el valor hora del básico (básico ÷ divisor). */
+  divisorHoras: z.number().min(100).max(300),
+  /** Bono por kilómetro, si la empresa lo paga (0 = no se paga). Los km salen del GPS. */
+  bonoPorKm: z.number().min(0).default(0),
+  feriados: z.array(Fecha).default([]),
+  fuente: z.string().max(300),
+  ejemplo: z.boolean().default(false),
+});
+export type Escala = z.infer<typeof Escala>;
+
+export type LineaSueldo = { concepto: string; cuenta: string; monto: number; condicional?: boolean; faltaCargar?: boolean };
+export type EstimacionSueldo = { lineas: LineaSueldo[]; total: number; valorHora: number; diasTrabajados: number };
+
+/** Minutos del turno que caen entre las 21 y las 6. */
+export function minutosNocturnos(vueltas: { sale: string; llega: string }[]): number {
+  let total = 0;
+  for (const v of vueltas) {
+    let a = aMinutos(v.sale);
+    let b = aMinutos(v.llega);
+    if (b < a) b += 24 * 60;
+    for (let m = a; m < b; m++) {
+      const h = Math.floor((m % (24 * 60)) / 60);
+      if (h >= 21 || h < 6) total++;
+    }
+  }
+  return total;
+}
+
+const esDomingo = (fecha: string) => new Date(Date.UTC(+fecha.slice(0, 4), +fecha.slice(5, 7) - 1, +fecha.slice(8, 10))).getUTCDay() === 0;
+
+/**
+ * Cuánto lleva ganado en bruto este mes, concepto por concepto.
+ * El básico está desde el día 1. Viáticos por día trabajado. Presentismo "si no faltás".
+ * Extras: lo que pasa la jornada cada día, al recargo común o al de domingo/feriado.
+ */
+export function estimarSueldo(escala: Escala, planillas: Pick<Planilla, "fecha" | "vueltas" | "franco">[], hoy: string, antiguedadAnios: number, kmMes = 0): EstimacionSueldo {
+  const mes = hoy.slice(0, 7);
+  const trabajadas = planillas.filter((p) => p.fecha.startsWith(mes) && p.fecha <= hoy && !p.franco);
+  const valorHora = escala.basico / escala.divisorHoras;
+  let extraComunMin = 0;
+  let extraEspecialMin = 0;
+  let nocturnoMin = 0;
+  for (const p of trabajadas) {
+    const extra = Math.max(0, duracionTurnoMin(p) - escala.jornadaHoras * 60);
+    if (esDomingo(p.fecha) || escala.feriados.includes(p.fecha)) extraEspecialMin += extra;
+    else extraComunMin += extra;
+    nocturnoMin += minutosNocturnos(p.vueltas);
+  }
+  const h = (m: number) => Math.round((m / 60) * 10) / 10;
+  const plata = (n: number) => Math.round(n);
+  const $ = (n: number) => `$ ${Math.round(n).toLocaleString("es-AR")}`;
+  const lineas: LineaSueldo[] = [
+    { concepto: "Básico", cuenta: "Ganado desde el día 1", monto: plata(escala.basico) },
+    { concepto: "Antigüedad", cuenta: `${antiguedadAnios} años × ${escala.antiguedadPctPorAnio} % del básico`, monto: plata((escala.basico * escala.antiguedadPctPorAnio * antiguedadAnios) / 100) },
+    { concepto: "Viáticos", cuenta: `${trabajadas.length} días trabajados × ${$(escala.viaticoPorDia)}`, monto: plata(trabajadas.length * escala.viaticoPorDia) },
+    { concepto: "Presentismo", cuenta: "Si no faltás en el mes", monto: plata(escala.presentismo), condicional: true, faltaCargar: escala.presentismo === 0 },
+    { concepto: "Horas extra", cuenta: `${h(extraComunMin)} h al ${escala.recargoExtraComunPct} % más`, monto: plata((extraComunMin / 60) * valorHora * (1 + escala.recargoExtraComunPct / 100)) },
+    { concepto: "Horas extra domingo y feriado", cuenta: `${h(extraEspecialMin)} h al ${escala.recargoExtraDomingoFeriadoPct} % más`, monto: plata((extraEspecialMin / 60) * valorHora * (1 + escala.recargoExtraDomingoFeriadoPct / 100)) },
+    { concepto: "Horas nocturnas", cuenta: `${h(nocturnoMin)} h entre las 21 y las 6 × ${escala.recargoNocturnoPct} %`, monto: plata((nocturnoMin / 60) * valorHora * (escala.recargoNocturnoPct / 100)), faltaCargar: escala.recargoNocturnoPct === 0 && nocturnoMin > 0 },
+  ];
+  if (escala.bonoPorKm > 0) lineas.push({ concepto: "Bono por kilómetro", cuenta: `${Math.round(kmMes)} km (GPS) × ${$(escala.bonoPorKm)}`, monto: plata(kmMes * escala.bonoPorKm) });
+  return { lineas, total: lineas.reduce((s, l) => s + l.monto, 0), valorHora: Math.round(valorHora), diasTrabajados: trabajadas.length };
 }

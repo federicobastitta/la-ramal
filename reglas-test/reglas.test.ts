@@ -166,3 +166,22 @@ describe("etapa 2: papeles y personal", () => {
     await assertSucceeds(getDoc(doc(trafico(), `lineas/${L}/jornadas/${j.id}`)));
   });
 });
+
+describe("recibos propios y escala", () => {
+  const personal = () => env.authenticatedContext("personal1", { rol: "personal", linea: L }).firestore();
+  const delegado = () => env.authenticatedContext("del1", { rol: "delegado", linea: L }).firestore();
+  const propio = { id: "chofer1-2026-08-propio", lineaId: L, choferId: "chofer1", periodo: "2026-08", neto: 0, ruta: "x", sha256: "a".repeat(64), mime: "image/jpeg", origen: "chofer", lectura: "pendiente", subidoEn: 1 };
+  it("el chofer sube la foto de su recibo, sin poner montos", async () => {
+    await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/recibos/${propio.id}`), propio));
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/recibos/otro`), { ...propio, id: "otro", basico: 99 }));
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/recibos/otro2`), { ...propio, id: "otro2", origen: "personal" }));
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/recibos/otro3`), { ...propio, id: "otro3", choferId: "chofer2" }));
+  });
+  it("la escala la ve toda la línea y la cargan personal o el delegado", async () => {
+    await assertSucceeds(setDoc(doc(delegado(), `lineas/${L}/escalas/vigente`), { id: "vigente", basico: 1 }));
+    await assertSucceeds(getDoc(doc(chofer(), `lineas/${L}/escalas/vigente`)));
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/escalas/vigente`), { id: "vigente", basico: 2 }));
+    await assertFails(setDoc(doc(trafico(), `lineas/${L}/escalas/vigente`), { id: "vigente", basico: 2 }));
+    await assertSucceeds(setDoc(doc(personal(), `lineas/${L}/escalas/vigente`), { id: "vigente", basico: 3 }));
+  });
+});

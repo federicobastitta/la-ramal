@@ -22,12 +22,12 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
+import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, Escala, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
 import { ErrorPermanente } from "@la-ramal/nucleo";
 import type { ArchivoLocal, Colecciones, Filtro, Fuente, NombreColeccion, Persona, Rol, Sesion } from "./fuente";
 import type { ZodType } from "zod";
 
-const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido } as never;
+const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido, escalas: Escala } as never;
 
 /**
  * Fuente real: Firestore (con caché local persistente, así la app abre y muestra datos sin señal),

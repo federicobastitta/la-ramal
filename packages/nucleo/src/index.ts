@@ -9,3 +9,5 @@ export * from "./vueltas";
 export * from "./estadisticas";
 export * from "./paradas";
 export * from "./jornada";
+export * from "./truco";
+export * from "./prode";

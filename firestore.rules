@@ -101,7 +101,10 @@ service cloud.firestore {
       // Recibos: los sube personal. El chofer solo da la conformidad, atada al hash del PDF que está viendo.
       match /recibos/{id} {
         allow read: if sueldos(l) || (chofer(l) && propio());
-        allow create: if sueldos(l) && nuevo().lineaId == l && !('conformidad' in nuevo());
+        allow create: if (sueldos(l) && nuevo().lineaId == l && !('conformidad' in nuevo()))
+          // El chofer puede subir la foto de su propio recibo en papel (la lee la IA; no lleva conformidad).
+          || (chofer(l) && nuevo().choferId == request.auth.uid && nuevo().lineaId == l && nuevo().origen == 'chofer'
+              && !nuevo().keys().hasAny(['conformidad', 'basico', 'extras', 'antiguedad', 'antiguedadAnios', 'viaticos', 'presentismo', 'bonoKm']));
         allow update: if (sueldos(l) && !cambia().hasAny(['conformidad', 'choferId']))
           || (chofer(l) && propio() && cambia().hasOnly(['conformidad'])
               && nuevo().conformidad.keys().hasOnly(['en', 'sha256'])
@@ -166,6 +169,12 @@ service cloud.firestore {
         allow create, update: if chofer(l) && nuevo().choferId == request.auth.uid && nuevo().lineaId == l && nuevo().id == id
           && id.matches(request.auth.uid + '-[0-9]{4}-[0-9]{2}-[0-9]{2}') && nuevo().vueltas.size() <= 30;
         allow delete: if false;
+      }
+
+      // Escala del convenio: la lee toda la línea (cada chofer ve su cuenta); la cargan personal, admin o el delegado.
+      match /escalas/{id} {
+        allow read: if deLinea(l);
+        allow write: if deLinea(l) && rol() in ['personal', 'admin', 'delegado'];
       }
 
       // Recorrido de la línea (cabeceras, paradas, trazado): lo carga tráfico.
