@@ -12,15 +12,15 @@ for (const p of [chofer, panel]) p.on("pageerror", (e) => errores.push(e.message
 
 await chofer.goto(URL + "/");
 await panel.goto(URL + "/panel.html");
-await chofer.getByRole("button", { name: "Reportar", exact: true }).click();
-await chofer.getByRole("button", { name: "Desperfecto del coche" }).click();
+await chofer.getByRole("button", { name: "Avería", exact: true }).click();
+await chofer.getByRole("button", { name: "Frenos", exact: true }).click();
 await chofer.locator('input[accept="image/*"]').setInputFiles({ name: "freno.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") });
-await chofer.getByLabel("Contalo en pocas palabras").fill("El freno delantero hace ruido al frenar fuerte");
+await chofer.getByLabel("Contalo en pocas palabras").fill("El delantero hace ruido al frenar fuerte");
 await chofer.getByText("Ubicación lista").waitFor();
 await chofer.getByRole("button", { name: "Enviar a la línea" }).click();
 await chofer.getByText("Enviado a la línea").waitFor();
 
-await panel.getByText("El freno delantero hace ruido al frenar fuerte").waitFor({ timeout: 5000 });
+await panel.getByText("Frenos: El delantero hace ruido al frenar fuerte").waitFor({ timeout: 5000 });
 const urgencia = await panel.getByText("Urgencia alta").count();
 await panel.getByRole("button", { name: "Mandar al taller" }).first().click();
 await chofer.getByText("En el taller").first().waitFor({ timeout: 5000 });

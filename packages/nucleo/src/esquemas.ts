@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 /** Lo que el chofer puede reportar desde la calle. */
-export const TIPOS_REPORTE = ["coche", "embotellamiento", "choque", "agresor", "corte", "otro"] as const;
+export const TIPOS_REPORTE = ["coche", "embotellamiento", "choque", "agresor", "corte", "calle", "otro"] as const;
+/** Avería: lo del vehículo. Incidente: lo vial (la calle, el tránsito, lo que pasa afuera). */
+export const TIPOS_INCIDENTE = ["embotellamiento", "choque", "corte", "calle", "agresor", "otro"] as const;
+export const PARTES_COCHE = ["Frenos", "Motor", "Puertas", "Luces", "Rampa", "Aire", "Ruedas", "Dirección", "Otra cosa"] as const;
 export const TipoReporte = z.enum(TIPOS_REPORTE);
 export type TipoReporte = z.infer<typeof TipoReporte>;
 
@@ -11,6 +14,7 @@ export const NOMBRE_TIPO: Record<TipoReporte, string> = {
   choque: "Choque",
   agresor: "Agresor",
   corte: "Corte o piquete",
+  calle: "Calle o semáforo",
   otro: "Otra cosa",
 };
 
@@ -100,3 +104,38 @@ export const AlertaPanico = z.object({
   coaccion: z.boolean().optional(),
 });
 export type AlertaPanico = z.infer<typeof AlertaPanico>;
+
+// ---------------------------------------------------------------------------------------------
+// Recorrido de la línea y jornadas medidas solas por el GPS (etapa 2).
+// ---------------------------------------------------------------------------------------------
+const PuntoZ = z.object({ lat: z.number(), lng: z.number() });
+
+/** Lo carga tráfico una vez: cabeceras, paradas y el trazado de cada ramal. */
+export const ConfigRecorrido = z.object({
+  id: z.literal("recorrido"),
+  lineaId: z.string().min(1),
+  cabeceras: z.array(z.object({ nombre: z.string().min(1), centro: PuntoZ, radioM: z.number().min(30).max(500) })).min(1).max(10),
+  paradas: z.array(z.object({ id: z.string(), nombre: z.string(), punto: PuntoZ })).max(400),
+  ramales: z.array(z.object({ nombre: z.string().min(1), trazado: z.array(PuntoZ).min(2).max(2000) })).min(1).max(10),
+  ejemplo: z.boolean().default(false),
+});
+export type ConfigRecorrido = z.infer<typeof ConfigRecorrido>;
+
+export const VueltaRealZ = z.object({ desde: z.string(), hasta: z.string(), sale: z.number().int(), llega: z.number().int() });
+
+/**
+ * Lo que midió el GPS en un día del chofer. No guarda cada posición (eso queda en el celular):
+ * solo el resumen, que es lo que necesitan las estadísticas y el índice de exigencia.
+ */
+export const Jornada = z.object({
+  id: z.string().min(1),
+  lineaId: z.string().min(1),
+  choferId: z.string().min(1),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  ramal: z.string().default(""),
+  vueltas: z.array(VueltaRealZ.extend({ paradas: z.number().int().nonnegative(), minutosTransito: z.number().nonnegative(), km: z.number().nonnegative(), puntos: z.number().nonnegative() })).max(30),
+  km: z.number().nonnegative(),
+  actualizadaEn: z.number().int().nonnegative(),
+  ejemplo: z.boolean().default(false),
+});
+export type Jornada = z.infer<typeof Jornada>;

@@ -95,3 +95,74 @@ describe("privacidad", () => {
     await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `lineas/${L}`)));
   });
 });
+
+describe("etapa 2: papeles y personal", () => {
+  const personal = () => env.authenticatedContext("personal1", { rol: "personal", linea: L }).firestore();
+  const taller = () => env.authenticatedContext("taller1", { rol: "taller", linea: L }).firestore();
+  const beto = () => chofer("chofer2");
+  const H = "a".repeat(64);
+  const pedido = (extra: Record<string, unknown> = {}) => ({ id: "ped1", lineaId: L, choferId: "chofer1", choferNombre: "Ana", tipo: "cambio_turno", detalle: "", adjuntos: [], estado: "ofrecido", creadoEn: 1, fecha: "2026-10-04", ...extra });
+  const semilla = (ruta: string, datos: Record<string, unknown>) => env.withSecurityRulesDisabled(async (c) => setDoc(doc(c.firestore(), ruta), datos));
+
+  it("planillas: el chofer ve la suya, no la de otro, y no puede editarla", async () => {
+    await semilla(`lineas/${L}/planillas/p1`, { id: "p1", lineaId: L, choferId: "chofer1" });
+    await semilla(`lineas/${L}/planillas/p2`, { id: "p2", lineaId: L, choferId: "chofer2" });
+    await assertSucceeds(getDoc(doc(chofer(), `lineas/${L}/planillas/p1`)));
+    await assertFails(getDoc(doc(chofer(), `lineas/${L}/planillas/p2`)));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/planillas/p1`), { cocheId: "Interno 1" }));
+    await assertSucceeds(updateDoc(doc(trafico(), `lineas/${L}/planillas/p1`), { cocheId: "Interno 1" }));
+  });
+
+  it("recibos: el chofer da conformidad solo con el hash del PDF; el taller no ve sueldos", async () => {
+    await semilla(`lineas/${L}/recibos/r1`, { id: "r1", lineaId: L, choferId: "chofer1", sha256: H, neto: 1 });
+    await assertFails(getDoc(doc(taller(), `lineas/${L}/recibos/r1`)));
+    await assertFails(getDoc(doc(trafico(), `lineas/${L}/recibos/r1`)));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/recibos/r1`), { conformidad: { en: 1, sha256: "b".repeat(64) } }));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/recibos/r1`), { neto: 999 }));
+    await assertSucceeds(updateDoc(doc(chofer(), `lineas/${L}/recibos/r1`), { conformidad: { en: 1, sha256: H } }));
+    await assertFails(updateDoc(doc(personal(), `lineas/${L}/recibos/r1`), { conformidad: null }));
+  });
+
+  it("certificados: el chofer carga pendiente; no se autovalida", async () => {
+    const c = { id: "c1", lineaId: L, choferId: "chofer1", tipo: "psicofisico", vence: "2027-01-01", ruta: "x", estado: "pendiente", cargadoEn: 1 };
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/certificados/c1`), { ...c, estado: "validado" }));
+    await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/certificados/c1`), c));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/certificados/c1`), { estado: "validado" }));
+    await assertSucceeds(updateDoc(doc(personal(), `lineas/${L}/certificados/c1`), { estado: "validado" }));
+  });
+
+  it("cambio de turno: se ofrece, lo toma otro, tráfico aprueba solo si está tomado", async () => {
+    await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/pedidos/ped1`), pedido()));
+    await assertFails(updateDoc(doc(trafico(), `lineas/${L}/pedidos/ped1`), { estado: "aprobado" }));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/pedidos/ped1`), { estado: "tomado", tomadoPor: "chofer1" }));
+    await assertSucceeds(getDocs(query(collection(beto(), `lineas/${L}/pedidos`), where("tipo", "==", "cambio_turno"), where("estado", "==", "ofrecido"))));
+    await assertFails(updateDoc(doc(beto(), `lineas/${L}/pedidos/ped1`), { estado: "tomado", tomadoPor: "otro" }));
+    await assertSucceeds(updateDoc(doc(beto(), `lineas/${L}/pedidos/ped1`), { estado: "tomado", tomadoPor: "chofer2", tomadoPorNombre: "Beto" }));
+    await assertFails(updateDoc(doc(beto(), `lineas/${L}/pedidos/ped1`), { estado: "aprobado" }));
+    await assertSucceeds(updateDoc(doc(trafico(), `lineas/${L}/pedidos/ped1`), { estado: "aprobado", actualizadoEn: 2 }));
+  });
+
+  it("parte de enfermo: nace pendiente, no aprobado; el taller no lo ve", async () => {
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/pedidos/ped2`), pedido({ id: "ped2", tipo: "parte_enfermo", estado: "aprobado" })));
+    await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/pedidos/ped2`), pedido({ id: "ped2", tipo: "parte_enfermo", estado: "pendiente" })));
+    await assertFails(getDoc(doc(taller(), `lineas/${L}/pedidos/ped2`)));
+    await assertFails(getDoc(doc(beto(), `lineas/${L}/pedidos/ped2`)));
+  });
+
+  it("avisos: el chofer solo se marca como leído a sí mismo", async () => {
+    await semilla(`lineas/${L}/comunicados/a1`, { id: "a1", lineaId: L, titulo: "t", texto: "x", leidos: ["chofer2"] });
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/comunicados/a1`), { leidos: ["chofer2", "otro"] }));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/comunicados/a1`), { leidos: ["chofer1"] }));
+    await assertFails(updateDoc(doc(chofer(), `lineas/${L}/comunicados/a1`), { titulo: "cambiado" }));
+    await assertSucceeds(updateDoc(doc(chofer(), `lineas/${L}/comunicados/a1`), { leidos: ["chofer2", "chofer1"] }));
+  });
+
+  it("jornadas: cada chofer escribe solo la suya", async () => {
+    const j = { id: "chofer1-2026-09-29", lineaId: L, choferId: "chofer1", fecha: "2026-09-29", ramal: "A", vueltas: [], km: 0, actualizadaEn: 1, ejemplo: false };
+    await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/jornadas/${j.id}`), j));
+    await assertFails(setDoc(doc(beto(), `lineas/${L}/jornadas/${j.id}`), { ...j, choferId: "chofer2" }));
+    await assertFails(setDoc(doc(beto(), `lineas/${L}/jornadas/chofer1-2026-09-30`), { ...j, id: "chofer1-2026-09-30", choferId: "chofer2" }));
+    await assertFails(getDoc(doc(beto(), `lineas/${L}/jornadas/${j.id}`)));
+    await assertSucceeds(getDoc(doc(trafico(), `lineas/${L}/jornadas/${j.id}`)));
+  });
+});

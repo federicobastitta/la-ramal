@@ -1,6 +1,6 @@
-import type { AlertaPanico, EstadoReporte, NuevoReporte, Reporte, Ubicacion } from "@la-ramal/nucleo";
+import type { AccionPedido, AlertaPanico, Certificado, Comunicado, ConfigRecorrido, EstadoReporte, Jornada, NuevoReporte, Pedido, Planilla, Recibo, Reporte, Ubicacion } from "@la-ramal/nucleo";
 
-export type Rol = "chofer" | "trafico" | "taller" | "personal" | "admin";
+export type Rol = "chofer" | "trafico" | "taller" | "personal" | "admin" | "delegado";
 
 export type Sesion = {
   uid: string;
@@ -10,6 +10,13 @@ export type Sesion = {
   lineaNombre: string;
   cocheId: string;
 };
+
+/** Colecciones de papeles y personal (etapa 2). */
+export type Colecciones = { planillas: Planilla; recibos: Recibo; certificados: Certificado; pedidos: Pedido; comunicados: Comunicado; jornadas: Jornada; configuracion: ConfigRecorrido };
+export type NombreColeccion = keyof Colecciones;
+/** Filtro de igualdad (lo único que necesitan las pantallas y lo que las reglas pueden comprobar). */
+export type Filtro = { campo: string; igual: string | boolean };
+export type Persona = { uid: string; nombre: string; rol: Rol };
 
 /** Archivo adjunto todavía en el celular, antes de subirlo. */
 export type ArchivoLocal = { ruta: string; blob: Blob };
@@ -38,4 +45,16 @@ export interface Fuente {
   confirmarPanico(lineaId: string, id: string): Promise<void>;
   /** Lo verifica el servidor. Con el PIN de coacción responde "cerrada" igual, pero la alerta sigue en la terminal. */
   cancelarPanico(lineaId: string, id: string, pin: string): Promise<"cerrada" | "pin_incorrecto">;
+
+  // ---- Etapa 2: papeles y personal ----
+  personas(lineaId: string): Promise<Persona[]>;
+  escuchar<K extends NombreColeccion>(lineaId: string, col: K, filtros: Filtro[], cb: (xs: Colecciones[K][]) => void): () => void;
+  crear<K extends NombreColeccion>(lineaId: string, col: K, doc: Colecciones[K]): Promise<void>;
+  actualizar<K extends NombreColeccion>(lineaId: string, col: K, id: string, cambios: Partial<Colecciones[K]>): Promise<void>;
+  subirArchivo(ruta: string, blob: Blob): Promise<void>;
+  /** Aplica una acción sobre un pedido (tomar, aprobar, entregar…). Valida con transicionPedido del núcleo. */
+  accionPedido(lineaId: string, p: Pedido, quien: Sesion, accion: AccionPedido, extra?: { respuesta?: string; rutaRespuesta?: string }): Promise<void>;
+  marcarLeido(lineaId: string, comunicadoId: string, uid: string): Promise<void>;
+  /** Crea o reemplaza el resumen del día que midió el GPS. */
+  guardarJornada(j: Jornada): Promise<void>;
 }

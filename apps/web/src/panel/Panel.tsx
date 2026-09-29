@@ -3,6 +3,10 @@ import { NOMBRE_ESTADO, NOMBRE_TIPO, type AlertaPanico, type Area, type EstadoRe
 import { crearFuente, type Fuente, type Sesion } from "../datos";
 import { Adjunto } from "../compartido/Adjunto";
 import { hora, useAviso } from "../compartido/useAviso";
+import { Avisos, Personal, Planillas, Recorridos } from "./Gestion";
+
+type Vista = "reportes" | "personal" | "planillas" | "avisos" | "recorridos";
+const VISTAS: [Vista, string][] = [["reportes", "Reportes y pánico"], ["personal", "Personal"], ["planillas", "Planillas"], ["avisos", "Avisos"], ["recorridos", "Exigencia por recorrido"]];
 
 const NOMBRE_AREA: Record<Area, string> = { taller: "Taller", trafico: "Tráfico", siniestros: "Siniestros", seguridad: "Seguridad" };
 
@@ -20,6 +24,7 @@ export function Panel() {
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [alertas, setAlertas] = useState<AlertaPanico[]>([]);
   const [filtro, setFiltro] = useState<Area | "todas">("todas");
+  const [vista, setVista] = useState<Vista>("reportes");
   const aviso = useAviso();
 
   useEffect(() => {
@@ -60,7 +65,31 @@ export function Panel() {
   if (sesion === undefined) return <div className="cargando">Abriendo el panel…</div>;
   if (!sesion || !fuente || sesion.rol === "chofer") return <div className="cargando">Este usuario no tiene acceso al panel de la línea.</div>;
 
+  const menu = (
+    <nav className="switch" aria-label="Secciones del panel" style={{ maxWidth: 1000, margin: "0 auto 14px", flexWrap: "wrap", borderRadius: 14 }}>
+      {VISTAS.map(([k, t]) => (
+        <button key={k} aria-pressed={vista === k} onClick={() => setVista(k)}>
+          {t}{k === "reportes" && alertas.length > 0 ? ` (${alertas.length} PÁNICO)` : ""}
+        </button>
+      ))}
+    </nav>
+  );
+  const props = { fuente, sesion, avisar: aviso.avisar };
+  if (vista !== "reportes")
+    return (
+      <>
+        {menu}
+        {vista === "personal" && <Personal {...props} />}
+        {vista === "planillas" && <Planillas {...props} />}
+        {vista === "avisos" && <Avisos {...props} />}
+        {vista === "recorridos" && <Recorridos {...props} />}
+        {aviso.texto && <div className="toast" role="status">{aviso.texto}</div>}
+      </>
+    );
+
   return (
+    <>
+    {menu}
     <div className="panel">
       <div className="kpis">
         <div className="kpi"><div className="muted">Reportes sin atender</div><div className="big" style={{ color: sinAtender.length ? "var(--warn)" : undefined }}>{sinAtender.length}</div></div>
@@ -154,5 +183,6 @@ export function Panel() {
       </div>
       {aviso.texto && <div className="toast" role="status">{aviso.texto}</div>}
     </div>
+    </>
   );
 }

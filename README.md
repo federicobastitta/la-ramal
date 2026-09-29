@@ -19,7 +19,22 @@ Esta primera versión (MVP) trae:
   - Botones «Mandar al taller», «Publicar a la flota» y «Tomar el caso»: el chofer ve la respuesta en su celular.
   - Semáforo de la flota.
 
-Papeles, truco, prode y el resto de lo que está en el folleto quedan para la etapa 2.
+### Etapa 2 (en curso)
+
+- **Barra del chofer:** Inicio · Incidente (lo vial) · Avería (el vehículo) · Papeles · Números · Compañeros.
+- **Papeles:**
+  - la planilla de hoy, las próximas y las pasadas, con horas y horas extra;
+  - recibos con conformidad atada al hash del PDF;
+  - certificados con aviso de vencimiento a 30, 15, 7, 1 y 0 días;
+  - pedidos: certificados en PDF, parte de enfermo con foto, vacaciones y cambio de turno entre compañeros aprobado por tráfico, con intercambio automático de planillas;
+  - avisos de la empresa con «leído por».
+- **Vueltas automáticas por GPS:** sin apretar nada, durante el turno. Detectan la salida y la llegada a las cabeceras, las paradas y las detenciones por el tránsito. Las posiciones crudas no salen del celular.
+- **Números del chofer:**
+  - productividad (vueltas contra la planilla, puntualidad, horas, km);
+  - demoras por vuelta, horarios pico, días más convenientes y sectores más trabados;
+  - índice de exigencia con fórmula pública, para compartir.
+- **Panel:** Personal, Planillas (se pegan desde Excel), Avisos y **exigencia por recorrido y franja horaria**.
+- Falta: Compañeros (truco en vivo, prode, calendario, cumpleaños) y el coche (revisión antes de salir).
 
 ## Probarla ya (modo demo, sin servidor)
 
