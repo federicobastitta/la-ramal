@@ -3,6 +3,8 @@
  * la Fórmula 1 por su id (4370) y las categorías argentinas buscándolas por nombre entre las ligas
  * de automovilismo de Argentina. La app no afirma qué radio transmite cada carrera.
  */
+import { carrerasDelCalendario } from "./calendario-argentino";
+
 export const CATEGORIAS = [
   { id: "tc", nombre: "Turismo Carretera", buscar: /turismo carretera|\bTC\b(?!\s*2000|\s*pista)/i },
   { id: "tc2000", nombre: "TC2000", buscar: /tc\s*2000/i },
@@ -12,7 +14,7 @@ export const CATEGORIAS = [
 ] as const;
 export type IdCategoria = (typeof CATEGORIAS)[number]["id"];
 
-export type Carrera = { id: string; categoria: IdCategoria; nombre: string; circuito: string; inicio: number };
+export type Carrera = { id: string; categoria: IdCategoria; nombre: string; circuito: string; inicio: number; horaConfirmada?: boolean; fuente?: string };
 export type EventoMotor = { idEvent: string; strEvent: string; strLeague?: string | null; strVenue?: string | null; strCircuit?: string | null; strTimestamp?: string | null; dateEvent?: string | null; strTime?: string | null };
 
 export function categoriaDe(liga: string): IdCategoria | null {
@@ -47,14 +49,16 @@ const DURACION_MS = 2 * 3_600_000;
 export function proximasCarreras(carreras: Carrera[], favoritas: IdCategoria[], ahora: number): SugerenciaCarrera[] {
   const porCategoria = new Map<IdCategoria, Carrera>();
   for (const c of carreras
-    .filter((c) => c.inicio + DURACION_MS > ahora && c.inicio - ahora < 30 * 86_400_000)
+    .filter((c) => (c.horaConfirmada === false ? c.inicio + 12 * 3_600_000 : c.inicio + DURACION_MS) > ahora && c.inicio - ahora < 30 * 86_400_000)
     .sort((a, b) => a.inicio - b.inicio)) {
     if (!porCategoria.has(c.categoria)) porCategoria.set(c.categoria, c);
   }
   return [...porCategoria.values()]
     .map((c) => {
       const faltaMin = Math.round((c.inicio - ahora) / 60_000);
-      const estado: SugerenciaCarrera["estado"] = faltaMin <= 0 ? "en_vivo" : new Date(c.inicio).toDateString() === new Date(ahora).toDateString() ? "hoy" : "proxima";
+      const mismoDia = new Date(c.inicio).toDateString() === new Date(ahora).toDateString();
+      // Sin hora confirmada no se puede decir "en vivo": ese día se muestra como "hoy".
+      const estado: SugerenciaCarrera["estado"] = c.horaConfirmada === false ? (mismoDia ? "hoy" : "proxima") : faltaMin <= 0 ? "en_vivo" : new Date(c.inicio).toDateString() === new Date(ahora).toDateString() ? "hoy" : "proxima";
       return { carrera: c, estado, faltaMin, favorita: favoritas.includes(c.categoria) };
     })
     .sort((a, b) => Number(b.favorita) - Number(a.favorita) || a.carrera.inicio - b.carrera.inicio);
@@ -78,9 +82,14 @@ export async function buscarCarreras(fetcher: typeof fetch = fetch): Promise<Car
   const resultados = await Promise.allSettled(
     pedidos.map(async ([id, cat]) => leerCarreras(((await pedir(`${API}/eventsnextleague.php?id=${id}`)) as { events?: EventoMotor[] | null }).events ?? [], cat)),
   );
-  const carreras = resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-  if (carreras.length === 0 && resultados.every((r) => r.status === "rejected")) throw new Error("Sin conexión con el calendario de carreras");
-  return carreras;
+  const delDirectorio = resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  return conCalendarioLocal(delDirectorio);
+}
+
+/** Suma el calendario argentino para las categorías que el directorio no trajo. */
+export function conCalendarioLocal(delDirectorio: Carrera[]): Carrera[] {
+  const traidas = new Set(delDirectorio.map((c) => c.categoria));
+  return [...delDirectorio, ...carrerasDelCalendario().filter((c) => !traidas.has(c.categoria))];
 }
 
 /** Carreras de EJEMPLO para la demo. */

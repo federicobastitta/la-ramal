@@ -124,7 +124,7 @@ export function Radio({ demo }: { demo: boolean }) {
     estado !== "sonando" && estado !== "conectando" && juegaMiEquipo
       ? `⚽ ${juegaMiEquipo.estado === "en_vivo" ? "Juega ahora" : "Hoy juega"} ${juegaMiEquipo.partido.local} – ${juegaMiEquipo.partido.visitante}`
       : estado !== "sonando" && estado !== "conectando" && corre
-      ? `🏁 ${corre.estado === "en_vivo" ? "Se está corriendo" : `Larga en ${corre.faltaMin} min`}: ${corre.carrera.nombre}`
+      ? `🏁 ${corre.estado === "en_vivo" ? "Se está corriendo" : corre.carrera.horaConfirmada === false ? "Hoy corre" : `Larga en ${corre.faltaMin} min`}: ${corre.carrera.nombre}`
       : estado === "sonando" ? "Sonando" : estado === "conectando" ? "Conectando…" : estado === "error" ? (sinDirectorio ? "Sin conexión con las radios" : "Esta radio no está transmitiendo por internet ahora") : "Radio";
 
   return (

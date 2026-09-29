@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CATEGORIAS, buscarCarreras, carrerasDeEjemplo, proximasCarreras, type Carrera, type IdCategoria, type SugerenciaCarrera } from "./automovilismo";
+import { CATEGORIAS, buscarCarreras, conCalendarioLocal, proximasCarreras, type Carrera, type IdCategoria, type SugerenciaCarrera } from "./automovilismo";
 import { RADIOS_DE_FUTBOL } from "./futbol";
 import type { Emisora } from "./emisoras";
 
@@ -15,6 +15,12 @@ const leerFavoritas = (): IdCategoria[] => {
 const tz = { timeZone: "America/Argentina/Buenos_Aires" } as const;
 const cuando = (s: SugerenciaCarrera) => {
   if (s.estado === "en_vivo") return "se está corriendo";
+  if (s.carrera.horaConfirmada === false) {
+    if (s.estado === "hoy") return "hoy · horario a confirmar";
+    const dia = new Date(s.carrera.inicio).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "short", ...tz });
+    const dias = Math.max(1, Math.round(s.faltaMin / 1440));
+    return `${dia} (en ${dias} ${dias === 1 ? "día" : "días"}) · horario a confirmar`;
+  }
   const hora = new Date(s.carrera.inicio).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", ...tz });
   if (s.estado === "hoy") return s.faltaMin < 60 ? `larga en ${s.faltaMin} min` : `hoy a las ${hora}`;
   const dia = new Date(s.carrera.inicio).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "short", ...tz });
@@ -31,10 +37,8 @@ export function useCarreras(demo: boolean) {
       .then((c) => vivo && setCarreras(c))
       .catch(() => {
         if (!vivo) return;
-        if (demo) {
-          setCarreras(carrerasDeEjemplo(Date.now()));
-          setEjemplo(true);
-        } else setCarreras([]);
+        // Sin conexión igual se ven las fechas argentinas del calendario local (reales, sin hora).
+        setCarreras(conCalendarioLocal([]));
       });
     return () => {
       vivo = false;
@@ -48,7 +52,9 @@ export function avisoDeCarrera(carreras: Carrera[] | null): SugerenciaCarrera | 
   const favs = leerFavoritas();
   if (!carreras || !favs.length) return null;
   const s = proximasCarreras(carreras, favs, Date.now()).find((x) => x.favorita);
-  return s && (s.estado === "en_vivo" || s.faltaMin <= 60) ? s : null;
+  if (!s) return null;
+  if (s.carrera.horaConfirmada === false) return s.estado === "hoy" ? s : null;
+  return s.estado === "en_vivo" || s.faltaMin <= 60 ? s : null;
 }
 
 export function CarrerasRadio({ carreras, ejemplo, emisoras, tocar }: { carreras: Carrera[] | null; ejemplo: boolean; emisoras: Emisora[]; tocar: (e: Emisora) => void }) {
@@ -106,7 +112,7 @@ export function CarrerasRadio({ carreras, ejemplo, emisoras, tocar }: { carreras
               </button>
             ))}
           </div>
-          <div className="muted" style={{ fontSize: 12 }}>La app no sabe qué radio transmite cada carrera: te sugiere radios deportivas. Calendario de TheSportsDB.</div>
+          <div className="muted" style={{ fontSize: 12 }}>La app no sabe qué radio transmite cada carrera: te sugiere radios deportivas. Fórmula 1: TheSportsDB. Categorías argentinas: {sugerencias.find((x) => x.carrera.fuente)?.carrera.fuente ?? "TheSportsDB"}</div>
         </>
       )}
     </div>
