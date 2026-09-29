@@ -99,7 +99,7 @@ export function Panel() {
               </select>
             </label>
           </div>
-          {visibles.length === 0 ? <div className="muted">Todavía no llegaron reportes. Abrí la app del chofer en otra pestaña y mandá uno: aparece acá al instante.</div> : (
+          {visibles.length === 0 ? <div className="muted">Todavía no llegaron reportes. Mandá uno desde la app del chofer: aparece acá al instante.</div> : (
             <div className="list">
               {visibles.map((r) => {
                 const area = r.clasificacion?.area ?? "trafico";
@@ -147,7 +147,7 @@ export function Panel() {
           <h3>Modo</h3>
           <div className="muted">
             {fuente.modo === "demo"
-              ? "Demo: los datos quedan en este navegador. Abrí la app del chofer en otra pestaña para mandar reportes."
+              ? "Demo con datos de ejemplo: todo queda solo en este navegador."
               : "Conectado a Firebase: todo en vivo."}
           </div>
         </div>

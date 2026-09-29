@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { REPOSO, pasoPanico, type AlertaPanico, type EfectoPanico, type EstadoPanico, type EventoPanico } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
 import { leerUbicacion } from "../dispositivo/ubicacion";
+import { UBICACION_DEMO } from "../datos/demo";
 
 const CADA_MS_UBICACION = 15_000;
 const REINTENTO_MS = 3_000;
@@ -27,7 +28,7 @@ export function usePanico(fuente: Fuente | null, sesion: Sesion | null) {
 
   const enviar = useCallback(async () => {
     if (!fuente || !sesion) return;
-    const ubicacion = await leerUbicacion(4_000);
+    const ubicacion = (await leerUbicacion(4_000)) ?? (fuente.modo === "demo" ? { ...UBICACION_DEMO, en: Date.now() } : null);
     alerta.current ??= {
       id: crypto.randomUUID(),
       lineaId: sesion.lineaId,

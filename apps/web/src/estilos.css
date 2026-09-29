@@ -93,3 +93,16 @@ input[type=text],input[type=password],textarea,select{font:inherit;color:var(--f
 .cargando{padding:40px;text-align:center;color:var(--muted)}
 .enlace{color:var(--amber);font-weight:700}
 @media (max-width:460px){body{padding-inline:0}.phone{border-radius:0;border-left:0;border-right:0;min-height:calc(100dvh - 60px)}}
+/* ---- Demo lado a lado ---- */
+.demo-dos{max-width:1360px;margin:0 auto;display:grid;grid-template-columns:420px minmax(0,1fr);gap:20px;align-items:start}
+.demo-dos .panel{grid-template-columns:minmax(0,1fr);max-width:none}
+.demo-dos .panel .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+.demo-dos .phone{position:sticky;top:12px}
+.solo-chico{display:none}
+@media (min-width:1100px){.demo-dos .panel{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}.demo-dos .panel .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:900px){
+  .demo-dos{grid-template-columns:minmax(0,1fr)}
+  .solo-chico{display:flex}
+  .demo-dos[data-ver="chofer"] .demo-panel,.demo-dos[data-ver="panel"] .demo-chofer{display:none}
+  .demo-dos .phone{position:static}
+}

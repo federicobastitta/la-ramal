@@ -10,6 +10,7 @@ import { Icono } from "../compartido/iconos";
 import { Adjunto } from "../compartido/Adjunto";
 import { haceCuanto, hora, useAviso } from "../compartido/useAviso";
 import { usePanico } from "./usePanico";
+import { UBICACION_DEMO } from "../datos/demo";
 
 type Tab = "inicio" | "reportar" | "calle" | "papeles" | "terminal";
 type Borrador = { tipo: TipoReporte; archivos: { tipo: TAdjunto["tipo"]; blob: Blob; url: string }[] };
@@ -131,7 +132,7 @@ function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton
           <div>
             {estado.fase === "enviando"
               ? "Si no hay señal, se sigue intentando sola."
-              : <>La terminal ve tu ubicación desde las {hora(estado.desde)}. {estado.confirmada ? <b>Tráfico confirmó: la ayuda va en camino.</b> : "Esperando que la terminal confirme…"}</>}
+              : <>La terminal ve tu ubicación desde las {hora(estado.desde)}{" · "}{estado.confirmada ? <b>Tráfico confirmó: la ayuda va en camino.</b> : "Esperando que la terminal confirme…"}</>}
           </div>
           {estado.fase === "activa" && (
             <form
@@ -199,7 +200,10 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
   const [b, setB] = useState<Borrador>({ tipo: "coche", archivos: [] });
   const [texto, setTexto] = useState("");
   const [mandando, setMandando] = useState(false);
-  const gps = useUbicacion();
+  const gpsReal = useUbicacion();
+  // En la demo, si el navegador no da el GPS, se usa un punto de ejemplo (y se avisa). En producción nunca.
+  const deEjemplo = p.fuente.modo === "demo" && !gpsReal.ubicacion && !!gpsReal.error;
+  const gps = deEjemplo ? { ubicacion: { ...UBICACION_DEMO, en: Date.now() }, error: null } : gpsReal;
   const grab = useGrabadora(30);
 
   const sumar = (tipo: TAdjunto["tipo"], blob: Blob | null | undefined) => {
@@ -269,7 +273,7 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
           <textarea id="r-texto" rows={2} maxLength={1000} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ej.: el freno delantero hace ruido al frenar fuerte" />
         </label>
         <div className="muted">
-          {gps.ubicacion ? <>Ubicación lista (±{gps.ubicacion.precisionM} m). Va directo a la línea con {p.sesion.cocheId}, la hora y el lugar.</> : gps.error ?? "Buscando tu ubicación…"}
+          {deEjemplo ? <>Ubicación de ejemplo: este navegador no da el GPS. En el celular va la ubicación real.</> : gps.ubicacion ? <>Ubicación lista (±{gps.ubicacion.precisionM} m). Va directo a la línea con {p.sesion.cocheId}, la hora y el lugar.</> : gps.error ?? "Buscando tu ubicación…"}
         </div>
         <button className="btn yellow" onClick={enviar} disabled={mandando || !p.cola}>{mandando ? "Mandando…" : "Enviar a la línea"}</button>
         {p.enCola > 0 && <div className="chip warn" style={{ alignSelf: "flex-start" }}><span className="dot" />{p.enCola} esperando señal</div>}
