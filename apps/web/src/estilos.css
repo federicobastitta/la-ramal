@@ -163,3 +163,7 @@ input[type=text],input[type=password],textarea,select{font:inherit;color:var(--f
 .radio-opcion.actual{background:var(--navy);color:var(--on-navy);border-color:var(--navy)}
 .radio-frec{font-family:var(--display);font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
 .radio-sin{font-size:11px;font-weight:600;color:var(--bad)}
+.futbol{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.partido{border-radius:10px;padding:8px 10px;background:var(--bg)}
+.partido.mio{background:var(--soft-warn);border-left:4px solid var(--accent)}
+.partido.vivo .en-vivo{background:var(--bad);color:#fff;border-radius:6px;padding:0 6px;font-size:11px;font-weight:800;letter-spacing:.5px}

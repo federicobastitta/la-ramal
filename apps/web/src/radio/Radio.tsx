@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buscarEmisoras, EMISORAS, type Banda, type Emisora } from "./emisoras";
 import { useDetenido } from "../dispositivo/detenido";
+import { Futbol, avisoDeMiEquipo, usePartidos } from "./PartidosRadio";
 
 const CLAVE_ULTIMA = "la-ramal-radio";
 const leer = () => {
@@ -36,6 +37,8 @@ export function Radio({ demo }: { demo: boolean }) {
   const [abierta, setAbierta] = useState(false);
   const [banda, setBanda] = useState<Banda>("FM");
   const { detenido } = useDetenido(demo);
+  const { partidos, ejemplo } = usePartidos(demo);
+  const juegaMiEquipo = avisoDeMiEquipo(partidos);
 
   /** Devuelve la lista con transmisiones (la busca en el directorio la primera vez). */
   const lista = useRef(emisoras);
@@ -109,7 +112,9 @@ export function Radio({ demo }: { demo: boolean }) {
   }, [emisora, tocar, mover]);
 
   const textoEstado =
-    estado === "sonando" ? "Sonando" : estado === "conectando" ? "Conectando…" : estado === "error" ? (sinDirectorio ? "Sin conexión con las radios" : "Esta radio no está transmitiendo por internet ahora") : "Radio";
+    estado !== "sonando" && estado !== "conectando" && juegaMiEquipo
+      ? `⚽ ${juegaMiEquipo.estado === "en_vivo" ? "Juega ahora" : "Hoy juega"} ${juegaMiEquipo.partido.local} – ${juegaMiEquipo.partido.visitante}`
+      : estado === "sonando" ? "Sonando" : estado === "conectando" ? "Conectando…" : estado === "error" ? (sinDirectorio ? "Sin conexión con las radios" : "Esta radio no está transmitiendo por internet ahora") : "Radio";
 
   return (
     <div className="radio">
@@ -144,6 +149,7 @@ export function Radio({ demo }: { demo: boolean }) {
               No se pudo conectar con el directorio de radios. {demo ? "En la vista previa de claude.ai las radios no suenan: abrí la app desde el enlace de GitHub." : "Revisá la conexión y probá de nuevo."}
             </div>
           )}
+          <Futbol partidos={partidos} ejemplo={ejemplo} emisoras={emisoras} tocar={(e) => { void encender().then((l) => tocar(l.find((x) => x.id === e.id) ?? e)); if (!detenido) setAbierta(false); }} />
           <div className="switch" role="group" aria-label="Banda" style={{ alignSelf: "flex-start" }}>
             {(["FM", "AM"] as Banda[]).map((b) => (
               <button key={b} aria-pressed={banda === b} onClick={() => setBanda(b)}>{b}</button>
