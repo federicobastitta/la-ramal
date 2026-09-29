@@ -12,6 +12,8 @@ import { haceCuanto, hora, useAviso } from "../compartido/useAviso";
 import { usePanico } from "./usePanico";
 import { Papeles, PlanillaDeHoy, usePapeles, type DatosPapeles } from "./Papeles";
 import { Estadisticas } from "./Estadisticas";
+import { Companeros } from "./Companeros";
+import { AvisosMuestra } from "./AvisosMuestra";
 import { useRecorridoAutomatico, type EstadoRecorrido } from "../dispositivo/recorrido-automatico";
 import { hoyISO } from "../compartido/pdf";
 import type { ConfigRecorrido } from "@la-ramal/nucleo";
@@ -84,8 +86,8 @@ export function AppChofer() {
     ),
     averia: <Reportar key="averia" modo="averia" fuente={fuente} sesion={sesion} cola={cola} enCola={enCola} mios={reportes.filter((r) => r.choferId === sesion.uid && r.tipo === "coche")} avisar={aviso.avisar} />,
     papeles: <Papeles fuente={fuente} sesion={sesion} datos={papeles} avisar={aviso.avisar} />,
-    numeros: <Estadisticas fuente={fuente} sesion={sesion} planillas={papeles.planillas} config={config} recorrido={recorrido} avisar={aviso.avisar} />,
-    terminal: <Terminal />,
+    numeros: <Estadisticas fuente={fuente} sesion={sesion} planillas={papeles.planillas} recibos={papeles.recibos} config={config} recorrido={recorrido} avisar={aviso.avisar} />,
+    terminal: <Companeros fuente={fuente} sesion={sesion} avisar={aviso.avisar} />,
   };
   const avisosPapeles = papeles.comunicados.filter((c) => !c.leidos.includes(sesion.uid)).length + papeles.ofrecidos.length;
   const tabs: [Tab, string, keyof typeof Icono][] = [["inicio", "Inicio", "inicio"], ["incidente", "Incidente", "alerta"], ["averia", "Avería", "llave"], ["papeles", avisosPapeles ? `Papeles (${avisosPapeles})` : "Papeles", "papel"], ["numeros", "Números", "grafico"], ["terminal", "Compañeros", "grupo"]];
@@ -103,6 +105,7 @@ export function AppChofer() {
             {boton.estado === "conectado" ? `Botón conectado${boton.bateria !== null ? ` · ${boton.bateria}%` : ""}` : boton.estado === "sin_soporte" ? "Botón: usá Chrome" : "Botón sin conectar"}
           </span>
         </div>
+        {fuente.modo === "demo" && <AvisosMuestra ir={setTab} />}
         <div className="screen">{pantallas[tab]}</div>
         <nav className="tabs" aria-label="Secciones">
           {tabs.map(([k, t, ic]) => (
@@ -353,16 +356,5 @@ function Calle({ reportes }: { reportes: Reporte[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-function Terminal() {
-  return (
-    <>
-      <div className="card"><div className="row"><span className="eyebrow">Truco</span><span className="chip warn">Etapa 2</span></div>
-        <div className="muted">Partida libre y campeonato por horarios, con aviso cuando tu rival está parado. Solo con el coche parado.</div></div>
-      <div className="card"><div className="row"><span className="eyebrow">Prode, cumpleaños y dónde comer</span><span className="chip warn">Etapa 2</span></div>
-        <div className="muted">El prode de la cabecera, los saludos de cumpleaños y los lugares con descuento para choferes.</div></div>
-    </>
   );
 }

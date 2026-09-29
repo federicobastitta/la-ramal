@@ -55,7 +55,7 @@ describe("recibos", () => {
   it("la conformidad vale solo para el mismo archivo", async () => {
     const h = await sha256Hex(new TextEncoder().encode("recibo"));
     expect(h).toHaveLength(64);
-    const r: Recibo = { id: "r", lineaId: "l", choferId: "a", periodo: "2026-08", neto: 1, ruta: "x", sha256: h, subidoEn: 0, conformidad: { en: 1, sha256: h } };
+    const r: Recibo = { id: "r", lineaId: "l", choferId: "a", periodo: "2026-08", neto: 1, ruta: "x", sha256: h, mime: "application/pdf", origen: "personal", subidoEn: 0, conformidad: { en: 1, sha256: h } };
     expect(conformidadVigente(r)).toBe(true);
     expect(conformidadVigente({ ...r, sha256: "0".repeat(64) })).toBe(false);
   });
@@ -85,5 +85,64 @@ describe("pedidos", () => {
     expect(transicionPedido(pedido({ estado: "pendiente", tipo: "vacaciones" }), beto, "cancelar")).toMatchObject({ ok: false });
     expect(transicionPedido(pedido({ estado: "pendiente", tipo: "vacaciones" }), ana, "cancelar")).toEqual({ ok: true, estado: "cancelado" });
     expect(transicionPedido(pedido({ estado: "aprobado", tipo: "vacaciones" }), ana, "cancelar")).toMatchObject({ ok: false });
+  });
+});
+
+import { estimarPlata } from "../src/personal";
+describe("plata", () => {
+  const dia = (fecha: string, horas: number) => ({ fecha, franco: false, vueltas: [{ sale: "05:00", llega: `${String(5 + horas).padStart(2, "0")}:00` }] });
+  it("el día 1 ya está el básico; se suman las extras al valor que pagó el último recibo", () => {
+    const planillas = [dia("2026-08-03", 10), dia("2026-08-04", 10), dia("2026-09-01", 9), dia("2026-09-02", 8), dia("2026-09-03", 11)];
+    // Agosto: 4 h extra pagadas $40.000 → $10.000 la hora extra. Septiembre: 1 + 0 + 3 = 4 h extra.
+    const e = estimarPlata([{ periodo: "2026-08", neto: 900_000, basico: 1_000_000, extras: 40_000 }], planillas, "2026-09-29");
+    expect(e).toMatchObject({ basico: 1_000_000, horasExtraMes: 4, valorHoraExtra: 10_000, extrasMes: 40_000, estimadoMes: 1_040_000 });
+    expect(estimarPlata([{ periodo: "2026-08", neto: 900_000, basico: 1_000_000, extras: 40_000 }], [], "2026-09-01")?.estimadoMes).toBe(1_000_000);
+  });
+  it("sin recibo con básico no inventa nada", () => {
+    expect(estimarPlata([], [], "2026-09-29")).toBeNull();
+    expect(estimarPlata([{ periodo: "2026-08", neto: 1 }], [], "2026-09-29")).toBeNull();
+  });
+});
+
+import { estimarSueldo, minutosNocturnos, type Escala } from "../src/personal";
+describe("sueldo con la escala del convenio", () => {
+  const escala: Escala = {
+    id: "vigente", lineaId: "l", desde: "2026-04-01", basico: 1_920_000, antiguedadPctPorAnio: 1, viaticoPorDia: 16_000, presentismo: 50_000,
+    recargoExtraComunPct: 50, recargoExtraDomingoFeriadoPct: 100, recargoNocturnoPct: 0, jornadaHoras: 8, divisorHoras: 192, bonoPorKm: 0, feriados: ["2026-09-02"], fuente: "prueba", ejemplo: true,
+  };
+  const dia = (fecha: string, sale: string, llega: string) => ({ fecha, franco: false, vueltas: [{ sale, llega }] });
+  it("día 1: básico + antigüedad + un viático", () => {
+    const e = estimarSueldo(escala, [dia("2026-09-01", "05:00", "13:00")], "2026-09-01", 10);
+    const monto = (c: string) => e.lineas.find((l) => l.concepto === c)!.monto;
+    expect(monto("Básico")).toBe(1_920_000);
+    expect(monto("Antigüedad")).toBe(192_000);
+    expect(monto("Viáticos")).toBe(16_000);
+    expect(monto("Horas extra")).toBe(0);
+    expect(e.valorHora).toBe(10_000);
+  });
+  it("extras al 50 % en día común y al 100 % en feriado", () => {
+    const e = estimarSueldo(escala, [dia("2026-09-01", "05:00", "15:00"), dia("2026-09-02", "05:00", "14:00")], "2026-09-30", 0);
+    const l = (c: string) => e.lineas.find((x) => x.concepto === c)!;
+    expect(l("Horas extra").monto).toBe(30_000); // 2 h × 10.000 × 1,5
+    expect(l("Horas extra domingo y feriado").monto).toBe(20_000); // 1 h × 10.000 × 2
+    expect(e.diasTrabajados).toBe(2);
+  });
+  it("cuenta las horas nocturnas y avisa si falta cargar el recargo", () => {
+    expect(minutosNocturnos([{ sale: "04:00", llega: "07:00" }])).toBe(120);
+    expect(minutosNocturnos([{ sale: "22:30", llega: "00:30" }])).toBe(120);
+    const e = estimarSueldo(escala, [dia("2026-09-01", "04:00", "12:00")], "2026-09-30", 0);
+    expect(e.lineas.find((x) => x.concepto === "Horas nocturnas")?.faltaCargar).toBe(true);
+  });
+});
+
+describe("bono por kilómetro", () => {
+  const base: Escala = {
+    id: "vigente", lineaId: "l", desde: "2026-04-01", basico: 1_920_000, antiguedadPctPorAnio: 1, viaticoPorDia: 0, presentismo: 0,
+    recargoExtraComunPct: 50, recargoExtraDomingoFeriadoPct: 100, recargoNocturnoPct: 0, jornadaHoras: 8, divisorHoras: 192, bonoPorKm: 0, feriados: [], fuente: "", ejemplo: false,
+  };
+  it("no aparece si no se paga; si se paga, km del GPS × valor", () => {
+    expect(estimarSueldo(base, [], "2026-09-10", 0, 900).lineas.some((l) => l.concepto === "Bono por kilómetro")).toBe(false);
+    const e = estimarSueldo({ ...base, bonoPorKm: 50 }, [], "2026-09-10", 0, 900);
+    expect(e.lineas.find((l) => l.concepto === "Bono por kilómetro")?.monto).toBe(45_000);
   });
 });

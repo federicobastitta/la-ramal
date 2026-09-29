@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Escala,
   NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, conformidadVigente, exigenciaPorRecorrido, leerVueltas, nivelVencimiento, sha256Hex,
   type Certificado, type Comunicado, type Jornada, type Pedido, type Planilla, type Recibo,
 } from "@la-ramal/nucleo";
@@ -9,7 +10,7 @@ import { fechaLinda, hoyISO, pdfSimple, sumarDias } from "../compartido/pdf";
 
 type P = { fuente: Fuente; sesion: Sesion; avisar: (s: string) => void };
 
-function useColeccion<K extends "planillas" | "recibos" | "certificados" | "pedidos" | "comunicados" | "jornadas">(p: P, col: K) {
+function useColeccion<K extends "planillas" | "recibos" | "certificados" | "pedidos" | "comunicados" | "jornadas" | "escalas">(p: P, col: K) {
   const [xs, setXs] = useState<import("../datos/fuente").Colecciones[K][]>([]);
   useEffect(() => p.fuente.escuchar(p.sesion.lineaId, col, [], setXs), [p.fuente, p.sesion, col]);
   return xs;
@@ -87,6 +88,7 @@ export function Personal(p: P) {
           )}
         </div>
         <SubirRecibo {...p} choferes={choferes} recibos={recibos} />
+        <EscalaConvenio {...p} />
       </div>
       <div className="col">
         <div className="card">
@@ -108,8 +110,8 @@ export function Personal(p: P) {
         </div>
         <div className="card">
           <h3>Recibos sin conformidad</h3>
-          {recibos.filter((r) => !conformidadVigente(r)).map((r) => <div key={r.id} className="muted">{nombre(r.choferId)} · {r.periodo}</div>)}
-          {recibos.every(conformidadVigente) && <div className="muted">Todos los recibos tienen conformidad.</div>}
+          {recibos.filter((r) => r.origen !== "chofer" && !conformidadVigente(r)).map((r) => <div key={r.id} className="muted">{nombre(r.choferId)} · {r.periodo}</div>)}
+          {recibos.every((r) => r.origen === "chofer" || conformidadVigente(r)) && <div className="muted">Todos los recibos tienen conformidad.</div>}
         </div>
       </div>
     </div>
@@ -134,37 +136,76 @@ function CertificadoFila(p: P & { c: Certificado; nombre: string }) {
 function SubirRecibo(p: P & { choferes: Persona[]; recibos: Recibo[] }) {
   const [chofer, setChofer] = useState("");
   const [periodo, setPeriodo] = useState("");
-  const [neto, setNeto] = useState("");
-  const [pdf, setPdf] = useState<File | null>(null);
+  const [archivo, setArchivo] = useState<File | null>(null);
   const subir = async () => {
-    const n = Number(neto.replace(/\./g, "").replace(",", "."));
-    if (!chofer || !/^\d{4}-\d{2}$/.test(periodo) || !pdf || !(n > 0)) return p.avisar("Completá chofer, período, neto y el PDF");
-    const ruta = `lineas/${p.sesion.lineaId}/recibos/${chofer}/${periodo}.pdf`;
-    await p.fuente.subirArchivo(ruta, pdf);
+    if (!chofer || !/^\d{4}-\d{2}$/.test(periodo) || !archivo) return p.avisar("Elegí chofer, período y el PDF o la foto del recibo");
+    const ruta = `lineas/${p.sesion.lineaId}/recibos/${chofer}/${periodo}`;
+    await p.fuente.subirArchivo(ruta, archivo);
     const id = `${chofer}-${periodo}`;
-    const r: Recibo = { id, lineaId: p.sesion.lineaId, choferId: chofer, periodo, neto: n, ruta, sha256: await sha256Hex(await pdf.arrayBuffer()), subidoEn: Date.now() };
+    const sha256 = await sha256Hex(await archivo.arrayBuffer());
     const existe = p.recibos.find((x) => x.id === id);
-    // Si se reemplaza el PDF, cambia el hash: la conformidad anterior deja de valer y el chofer la vuelve a dar.
-    if (existe) await p.fuente.actualizar(p.sesion.lineaId, "recibos", id, { ruta, sha256: r.sha256, neto: n, subidoEn: r.subidoEn });
-    else await p.fuente.crear(p.sesion.lineaId, "recibos", r);
-    setPdf(null);
-    p.avisar("Recibo subido: el chofer lo ve y da la conformidad");
+    // Si se reemplaza el archivo, cambia el hash: la conformidad anterior deja de valer y el chofer la vuelve a dar.
+    if (existe) await p.fuente.actualizar(p.sesion.lineaId, "recibos", id, { ruta, sha256, mime: archivo.type, subidoEn: Date.now() });
+    else
+      await p.fuente.crear(p.sesion.lineaId, "recibos", {
+        id, lineaId: p.sesion.lineaId, choferId: chofer, periodo, neto: 0, ruta, sha256, mime: archivo.type || "application/pdf", origen: "personal", lectura: "pendiente", subidoEn: Date.now(),
+      });
+    setArchivo(null);
+    p.avisar(p.fuente.modo === "demo" ? "Recibo subido. En la demo no se lee con IA; en la app real completa los montos solo." : "Recibo subido: la IA lo lee y completa los montos");
   };
   return (
     <div className="card">
       <h3>Subir un recibo</h3>
+      <div className="muted">Solo el PDF o una foto: la IA lee básico, antigüedad, viáticos, presentismo, extras y neto.</div>
       <label className="f" htmlFor="r-chofer">Chofer
         <select id="r-chofer" value={chofer} onChange={(e) => setChofer(e.target.value)}>
           <option value="">Elegí</option>
           {p.choferes.map((c) => <option key={c.uid} value={c.uid}>{c.nombre}</option>)}
         </select>
       </label>
-      <div className="grid2">
-        <label className="f" htmlFor="r-periodo">Período<input id="r-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} /></label>
-        <label className="f" htmlFor="r-neto">Neto ($)<input id="r-neto" type="text" inputMode="decimal" value={neto} onChange={(e) => setNeto(e.target.value)} /></label>
-      </div>
-      <label className="f" htmlFor="r-pdf">PDF del recibo<input id="r-pdf" type="file" accept="application/pdf" onChange={(e) => setPdf(e.target.files?.[0] ?? null)} /></label>
+      <label className="f" htmlFor="r-periodo">Período<input id="r-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} /></label>
+      <label className="f" htmlFor="r-pdf">Recibo (PDF o foto)<input id="r-pdf" type="file" accept="application/pdf,image/*" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} /></label>
       <button className="btn yellow" onClick={subir}>Subir</button>
+    </div>
+  );
+}
+
+function EscalaConvenio(p: P) {
+  const escalas = useColeccion(p, "escalas");
+  const actual = escalas[0];
+  const [e, setE] = useState<Record<string, string>>({});
+  const campos: [keyof Escala, string][] = [
+    ["desde", "Vigente desde (AAAA-MM-DD)"], ["basico", "Básico ($)"], ["antiguedadPctPorAnio", "Antigüedad (% del básico por año)"], ["viaticoPorDia", "Viático por día ($)"],
+    ["presentismo", "Presentismo ($)"], ["recargoExtraComunPct", "Hora extra día común (% de recargo)"], ["recargoExtraDomingoFeriadoPct", "Hora extra domingo y feriado (%)"],
+    ["recargoNocturnoPct", "Recargo nocturno 21 a 6 h (%)"], ["jornadaHoras", "Jornada (horas)"], ["divisorHoras", "Divisor para el valor hora"], ["bonoPorKm", "Bono por km ($, 0 si no hay)"], ["fuente", "De dónde salen estos números"],
+  ];
+  const valor = (k: string) => e[k] ?? String((actual as Record<string, unknown> | undefined)?.[k] ?? "");
+  const guardar = async () => {
+    const num = (k: string) => Number(valor(k).replace(/\./g, "").replace(",", "."));
+    const nueva = {
+      id: "vigente" as const, lineaId: p.sesion.lineaId, desde: valor("desde"), basico: num("basico"), antiguedadPctPorAnio: num("antiguedadPctPorAnio"), viaticoPorDia: num("viaticoPorDia"),
+      presentismo: num("presentismo"), recargoExtraComunPct: num("recargoExtraComunPct"), recargoExtraDomingoFeriadoPct: num("recargoExtraDomingoFeriadoPct"), recargoNocturnoPct: num("recargoNocturnoPct"),
+      jornadaHoras: num("jornadaHoras"), divisorHoras: num("divisorHoras"), bonoPorKm: num("bonoPorKm"), feriados: actual?.feriados ?? [], fuente: valor("fuente"), ejemplo: false,
+    };
+    const ok = Escala.safeParse(nueva);
+    if (!ok.success) return p.avisar("Revisá: " + (ok.error.issues[0]?.path.join(".") ?? "") + " " + (ok.error.issues[0]?.message ?? ""));
+    if (actual) await p.fuente.actualizar(p.sesion.lineaId, "escalas", "vigente", ok.data);
+    else await p.fuente.crear(p.sesion.lineaId, "escalas", ok.data);
+    setE({});
+    p.avisar("Escala guardada: los choferes ven la cuenta nueva");
+  };
+  return (
+    <div className="card">
+      <h3>Escala del convenio (CCT 460/73)</h3>
+      <div className="muted">Se actualiza con cada paritaria. Con esto cada chofer ve cuánto lleva ganado, concepto por concepto.{actual?.ejemplo ? " Ahora hay una escala de EJEMPLO." : ""}</div>
+      <div className="grid2">
+        {campos.map(([k, t]) => (
+          <label key={k} className="f" htmlFor={`esc-${k}`} style={k === "fuente" ? { gridColumn: "1 / -1" } : undefined}>{t}
+            <input id={`esc-${k}`} type="text" value={valor(k)} onChange={(ev) => setE((x) => ({ ...x, [k]: ev.target.value }))} />
+          </label>
+        ))}
+      </div>
+      <button className="btn yellow" onClick={guardar}>Guardar escala</button>
     </div>
   );
 }

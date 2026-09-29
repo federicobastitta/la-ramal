@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, TIPOS_CERTIFICADO, conformidadVigente, descansosMin, duracionTurnoMin, estadoInicial, horasDelPeriodo, horasExtra,
+  NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, TIPOS_CERTIFICADO, conformidadVigente, descansosMin, sha256Hex, duracionTurnoMin, estadoInicial, horasDelPeriodo, horasExtra,
   nivelVencimiento, diasParaVencer, type Certificado, type Comunicado, type Pedido, type Planilla, type Recibo, type TipoPedido,
 } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
@@ -61,7 +61,7 @@ type Pantalla = "planillas" | "recibos" | "certificados" | "pedidos" | "comunica
 export function Papeles(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles; avisar: (s: string) => void }) {
   const [ver, setVer] = useState<Pantalla>("planillas");
   const sinLeer = p.datos.comunicados.filter((c) => !c.leidos.includes(p.sesion.uid)).length;
-  const sinConformidad = p.datos.recibos.filter((r) => !conformidadVigente(r)).length;
+  const sinConformidad = p.datos.recibos.filter((r) => r.origen !== "chofer" && !conformidadVigente(r)).length;
   const porVencer = p.datos.certificados.filter((c) => nivelVencimiento(c.vence, hoyISO()) !== "al_dia").length;
   const opciones: [Pantalla, string, number][] = [
     ["planillas", "Planillas", 0],
@@ -132,35 +132,103 @@ function ListaPlanillas({ titulo, xs }: { titulo: string; xs: Planilla[] }) {
   );
 }
 
-function Recibos(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles; avisar: (s: string) => void }) {
-  const abrir = async (r: Recibo) => {
-    const url = await p.fuente.urlAdjunto(r.ruta);
-    if (url) window.open(url, "_blank", "noopener");
-  };
+/** El recibo dibujado en pantalla (se abre ahí mismo, sin depender de un visor de PDF). */
+function ReciboVista({ r, nombre, linea }: { r: Recibo; nombre: string; linea: string }) {
+  const haberes: [string, number | undefined][] = [
+    ["Básico", r.basico],
+    [`Antigüedad${r.antiguedadAnios !== undefined ? ` (${r.antiguedadAnios} años)` : ""}`, r.antiguedad],
+    ["Viáticos", r.viaticos],
+    ["Presentismo", r.presentismo],
+    ["Horas extra", r.extras],
+    ["Bono por kilómetro", r.bonoKm],
+  ];
+  const conMonto = haberes.filter(([, v]) => v !== undefined && v > 0) as [string, number][];
+  const bruto = conMonto.reduce((s, [, v]) => s + v, 0);
+  const descuentos = bruto > 0 && r.neto > 0 ? bruto - r.neto : 0;
+  const fila = (t: string, v: string, fuerte = false) => (
+    <div className="row" style={{ borderTop: "1px dashed var(--line)", padding: "4px 0", fontWeight: fuerte ? 700 : 400 }}>
+      <span>{t}</span><span style={{ fontVariantNumeric: "tabular-nums" }}>{v}</span>
+    </div>
+  );
   return (
+    <div style={{ background: "#fffdf7", color: "#14213d", border: "1px solid var(--line)", borderRadius: 10, padding: 12, fontSize: 14, marginTop: 8 }}>
+      <div className="row"><b>Recibo de haberes · {r.periodo}</b>{r.lectura === "leido" && r.origen === "chofer" && <span className="chip ok">leído por IA</span>}</div>
+      <div style={{ color: "#4a5670" }}>{linea} · {nombre} · Conductor · CCT 460/73</div>
+      {conMonto.length === 0 ? (
+        <div style={{ marginTop: 8, color: "#4a5670" }}>{r.lectura === "pendiente" ? "Leyendo el recibo…" : "Todavía no hay conceptos leídos de este recibo."}</div>
+      ) : (
+        <>
+          <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: "#a14a06" }}>Haberes</div>
+          {conMonto.map(([t, v]) => fila(t, plata(v)))}
+          {fila("Total bruto", plata(bruto), true)}
+          {descuentos > 0 && <>{fila("Descuentos (jubilación, obra social, sindicato)", `− ${plata(descuentos)}`)}</>}
+        </>
+      )}
+      {r.neto > 0 && <div className="row" style={{ marginTop: 6, background: "#f2b705", borderRadius: 8, padding: "6px 10px", fontWeight: 800 }}><span>Neto a cobrar</span><span>{plata(r.neto)}</span></div>}
+    </div>
+  );
+}
+
+function Recibos(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles; avisar: (s: string) => void }) {
+  const [abierto, setAbierto] = useState<string | null>(null);
+  const abrir = (r: Recibo) => setAbierto((x) => (x === r.id ? null : r.id));
+  return (
+    <>
     <div className="card">
       <span className="eyebrow">Recibos de sueldo</span>
       {p.datos.recibos.length === 0 ? <div className="muted">Personal todavía no subió recibos.</div> : (
         <div className="list">
           {p.datos.recibos.map((r) => (
-            <div className="it" key={r.id}>
+            <div className="it" key={r.id} style={{ display: "block" }}>
+              <div className="row" style={{ alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
-                <b>{r.periodo}</b> · {plata(r.neto)}
+                <b>{r.periodo}</b> · {r.neto > 0 ? plata(r.neto) : r.lectura === "ilegible" ? "no se pudo leer" : "leyendo…"}{r.origen === "chofer" ? " · lo subiste vos" : ""}
                 <div className="muted">{conformidadVigente(r) ? `Conformidad dada el ${new Date(r.conformidad!.en).toLocaleDateString("es-AR")}` : r.conformidad ? "El recibo cambió después de tu conformidad: revisalo de nuevo" : "Sin conformidad"}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <button className="btn alt" onClick={() => abrir(r)}>Ver</button>
-                {!conformidadVigente(r) && (
+                <button className="btn alt" onClick={() => abrir(r)} aria-expanded={abierto === r.id}>{abierto === r.id ? "Cerrar" : "Ver"}</button>
+                {r.origen !== "chofer" && !conformidadVigente(r) && (
                   <button className="btn yellow" onClick={() => p.fuente.actualizar(p.sesion.lineaId, "recibos", r.id, { conformidad: { en: Date.now(), sha256: r.sha256 } }).then(() => p.avisar("Conformidad registrada"))}>
                     Dar conformidad
                   </button>
                 )}
               </div>
+              </div>
+              {abierto === r.id && <ReciboVista r={r} nombre={p.sesion.nombre} linea={p.sesion.lineaNombre} />}
             </div>
           ))}
         </div>
       )}
       <div className="muted">La conformidad queda atada a ese archivo exacto: si el recibo cambia, te lo vuelve a pedir.</div>
+    </div>
+    <SubirMiRecibo {...p} />
+    </>
+  );
+}
+
+/** El chofer puede sacarle una foto a su recibo en papel: la IA lo lee y con eso calcula "Tu plata este mes". */
+function SubirMiRecibo(p: { fuente: Fuente; sesion: Sesion; avisar: (s: string) => void }) {
+  const [periodo, setPeriodo] = useState("");
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const subir = async () => {
+    if (!/^\d{4}-\d{2}$/.test(periodo) || !archivo) return p.avisar("Elegí el mes y sacale una foto al recibo");
+    const id = `${p.sesion.uid}-${periodo}-propio`;
+    const ruta = `lineas/${p.sesion.lineaId}/recibos/${p.sesion.uid}/${periodo}-propio`;
+    await p.fuente.subirArchivo(ruta, archivo);
+    await p.fuente.crear(p.sesion.lineaId, "recibos", {
+      id, lineaId: p.sesion.lineaId, choferId: p.sesion.uid, periodo, neto: 0, ruta, sha256: await sha256Hex(await archivo.arrayBuffer()), mime: archivo.type || "image/jpeg",
+      origen: "chofer", lectura: "pendiente", subidoEn: Date.now(),
+    });
+    setArchivo(null);
+    p.avisar(p.fuente.modo === "demo" ? "Subido. En la demo no se lee con IA; en la app real completa los montos solo." : "Subido: en un momento la IA lo lee");
+  };
+  return (
+    <div className="card">
+      <span className="eyebrow">Subir mi recibo</span>
+      <div className="muted">Sacale una foto a tu recibo en papel (o subí el PDF). La IA lee básico, antigüedad, viáticos y extras, y con eso calcula cuánto llevás ganado.</div>
+      <label className="f" htmlFor="mr-mes">Mes del recibo<input id="mr-mes" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} /></label>
+      <label className="f" htmlFor="mr-foto">Foto o PDF<input id="mr-foto" type="file" accept="image/*,application/pdf" capture="environment" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} /></label>
+      <button className="btn yellow" onClick={subir}>Subir</button>
     </div>
   );
 }

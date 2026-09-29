@@ -12,6 +12,7 @@ import { defineSecret, defineString } from "firebase-functions/params";
 import { z } from "zod";
 import { AlertaPanico, Certificado, NOMBRE_CERTIFICADO, NuevoReporte, Pedido, Planilla, clasificarPorReglas, diasParaVencer, hashearPin, intercambiarPlanillas, pinValido, tocaAvisar, unirClasificacion, verificarPin, type HashPin } from "@la-ramal/nucleo";
 import { MODELO_POR_DEFECTO, clasificarConIA } from "./clasificar-ia";
+import { camposDelRecibo, leerReciboConIA } from "./leer-recibo";
 
 initializeApp();
 setGlobalOptions({ region: "southamerica-east1", maxInstances: 20 });
@@ -246,4 +247,26 @@ export const avisoDeVencimientos = onSchedule({ schedule: "0 8 * * *", timeZone:
     avisos++;
   }
   logger.info("Avisos de vencimiento enviados", { avisos, hoy });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Recibo nuevo (subido por personal o por el chofer): Claude lo lee y completa básico, antigüedad,
+// viáticos, presentismo, extras, bono por km y neto. Sirve para "Tu plata este mes".
+// ---------------------------------------------------------------------------------------------
+export const alSubirRecibo = onDocumentCreated({ document: "lineas/{lineaId}/recibos/{id}", secrets: [CLAVE_ANTHROPIC], timeoutSeconds: 120 }, async (ev) => {
+  const snap = ev.data;
+  const d = snap?.data();
+  if (!snap || !d || d.basico !== undefined || typeof d.ruta !== "string") return;
+  const clave = CLAVE_ANTHROPIC.value();
+  if (!clave) return;
+  try {
+    const [bytes] = await getStorage().bucket().file(d.ruta).download();
+    if (bytes.length > 20 * 1024 * 1024) return;
+    const mime = typeof d.mime === "string" ? d.mime : "application/pdf";
+    const leido = await leerReciboConIA(new Anthropic({ apiKey: clave }), { mime, base64: bytes.toString("base64") }, MODELO.value());
+    if (leido) await snap.ref.update(camposDelRecibo(leido));
+  } catch (err) {
+    logger.error("No se pudo leer el recibo", { id: ev.params.id, err: String(err) });
+    await snap.ref.update({ lectura: "ilegible" });
+  }
 });

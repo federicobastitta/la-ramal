@@ -1,4 +1,4 @@
-import { distanciaM, indiceExigencia, largoRecorridoM, sha256Hex, type Certificado, type Comunicado, type ConfigRecorrido, type Jornada, type Pedido, type Ping, type Planilla, type Punto, type Recibo } from "@la-ramal/nucleo";
+import { distanciaM, indiceExigencia, largoRecorridoM, sha256Hex, type Certificado, type Comunicado, type ConfigRecorrido, type Jornada, type Pedido, type Ping, type Planilla, type Punto, type Recibo, type Escala } from "@la-ramal/nucleo";
 import { hoyISO, pdfSimple, sumarDias } from "../compartido/pdf";
 import { idb } from "./idb";
 
@@ -9,7 +9,7 @@ export const CHOFERES_DEMO = [
   { uid: "demo-chofer-rios", nombre: "Marcela Ríos", coche: "Interno 12" },
 ];
 
-const VERSION = "semilla-v1";
+const VERSION = "semilla-v3";
 const L = "linea-22";
 
 export async function sembrarDemo(): Promise<void> {
@@ -18,9 +18,9 @@ export async function sembrarDemo(): Promise<void> {
   const docs: [string, unknown][] = [];
   const poner = (col: string, d: { id: string }) => docs.push([`${col}/${d.id}`, d]);
 
-  // Planillas: los últimos 14 días y los próximos 7 para los tres choferes (domingo franco).
+  // Planillas: los últimos 75 días (para que haya recibos con sus horas) y los próximos 7 para los tres choferes (domingo franco).
   for (const [i, c] of CHOFERES_DEMO.entries()) {
-    for (let d = -14; d <= 7; d++) {
+    for (let d = -75; d <= 7; d++) {
       const fecha = sumarDias(hoy, d);
       const dia = new Date(+fecha.slice(0, 4), +fecha.slice(5, 7) - 1, +fecha.slice(8, 10)).getDay();
       const base = 5 * 60 + 10 + i * 35;
@@ -42,17 +42,18 @@ export async function sembrarDemo(): Promise<void> {
     d.setMonth(d.getMonth() - n);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   };
-  for (const [n, neto] of [[1, 1_184_500], [2, 1_152_300]] as const) {
+  for (const [n, neto] of [[1, 1_986_400], [2, 1_941_900]] as const) {
     const periodo = mes(n);
     const pdf = pdfSimple(`Recibo de sueldo ${periodo} (EJEMPLO)`, [
       "Empresa de ejemplo S.A. - Línea 22 (ejemplo)",
       "Empleado: Carlos Medina - Legajo 0423 - Conductor",
       "Convenio: UTA - CCT 460/73 (ejemplo, montos inventados)",
       "",
-      "Básico ................................ $ 1.020.000",
-      "Antigüedad ............................ $ 61.200",
-      "Horas extra ........................... $ 145.800",
-      "Jubilación / Obra social / Sindicato .. -$ 42.500",
+      "Básico ................................ $ 1.545.278",
+      "Antigüedad (12 años, 1% por año) ...... $ 185.433",
+      "Viáticos (24 días) .................... $ 384.000",
+      "Horas extra ........................... $ 152.400",
+      "Jubilación / Obra social / Sindicato .. -$ 280.711",
       "",
       `Neto a cobrar ......................... $ ${neto.toLocaleString("es-AR")}`,
       "",
@@ -60,7 +61,10 @@ export async function sembrarDemo(): Promise<void> {
     ]);
     const ruta = `lineas/${L}/recibos/demo-chofer-medina/${periodo}.pdf`;
     await idb.poner("archivos", ruta, pdf);
-    const r: Recibo = { id: `demo-chofer-medina-${periodo}`, lineaId: L, choferId: "demo-chofer-medina", periodo, neto, ruta, sha256: await sha256Hex(await pdf.arrayBuffer()), subidoEn: Date.now() };
+    const r: Recibo = {
+      id: `demo-chofer-medina-${periodo}`, lineaId: L, choferId: "demo-chofer-medina", periodo, neto, ruta, sha256: await sha256Hex(await pdf.arrayBuffer()), mime: "application/pdf",
+      origen: "personal", lectura: "leido", basico: 1_545_278, antiguedadAnios: 12, antiguedad: 185_433, viaticos: 384_000, extras: 152_400, subidoEn: Date.now(),
+    };
     if (n === 2) r.conformidad = { en: Date.now() - 20 * 86_400_000, sha256: r.sha256 };
     poner("recibos", r);
   }
@@ -76,6 +80,14 @@ export async function sembrarDemo(): Promise<void> {
   const sabado = sumarDias(hoy, (6 - new Date().getDay() + 7) % 7 || 7);
   const cambio: Pedido = { id: "pedido-benitez-sabado", lineaId: L, choferId: "demo-chofer-benitez", choferNombre: "Jorge Benítez", tipo: "cambio_turno", detalle: "Cumpleaños de mi hija", fecha: sabado, adjuntos: [], estado: "ofrecido", creadoEn: Date.now() - 3_600_000 };
   poner("pedidos", cambio);
+
+  // Escala de EJEMPLO con los números que publicaron los diarios (abril 2026). Hay que confirmarla con la escala oficial.
+  const escala: Escala = {
+    id: "vigente", lineaId: L, desde: "2026-04-01", basico: 1_545_278.25, antiguedadPctPorAnio: 1, viaticoPorDia: 16_000, presentismo: 0,
+    recargoExtraComunPct: 50, recargoExtraDomingoFeriadoPct: 100, recargoNocturnoPct: 0, jornadaHoras: 8, divisorHoras: 200, bonoPorKm: 0, feriados: [],
+    fuente: "EJEMPLO: básico, antigüedad y viático según notas periodísticas (abril 2026). Presentismo, nocturnidad y divisor: a confirmar con personal.", ejemplo: true,
+  };
+  poner("escalas", escala);
 
   const comunicado: Comunicado = {
     id: "com-obra-mitre", lineaId: L, titulo: "Desvío por obra en Av. Mitre (ejemplo)", importante: true, creadoEn: Date.now() - 2 * 3_600_000, leidos: [],
