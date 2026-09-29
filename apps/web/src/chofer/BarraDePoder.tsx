@@ -13,7 +13,9 @@ const COLORES: Record<string, string> = {
   "Bono por kilómetro": "#5fcf97",
 };
 
-const MS_POR_VUELTA_DEMO = 6_000;
+const MS_POR_VUELTA_DEMO = 10_000;
+/** En la demo se muestran 5 vueltas y el colectivo se detiene. */
+const VUELTAS_DEMO = 5;
 const MS_POR_VUELTA_REAL = 3_000;
 
 function Colectivo({ mirandoIzquierda }: { mirandoIzquierda: boolean }) {
@@ -52,6 +54,7 @@ export function BarraDePoder({ lineas, ganado, proyectado, valorVuelta, vueltasH
   const [enViaje, setEnViaje] = useState(simular);
   const [pulso, setPulso] = useState(0);
   const previas = useRef(vueltasHoy);
+  const hechasRef = useRef(0);
   const quieto = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
   // Vuelta real contada por el GPS: el colectivo hace su viaje.
@@ -77,10 +80,12 @@ export function BarraDePoder({ lineas, ganado, proyectado, valorVuelta, vueltasH
         } catch {
           /* sin vibración */
         }
-        if (!simular) {
+        if (!simular || hechasRef.current + 1 >= VUELTAS_DEMO) {
+          hechasRef.current += 1;
           setEnViaje(false);
           return;
         }
+        hechasRef.current += 1;
         inicio = ahora;
       }
       raf = requestAnimationFrame(cuadro);
@@ -91,19 +96,22 @@ export function BarraDePoder({ lineas, ganado, proyectado, valorVuelta, vueltasH
 
   const ida = hechas % 2 === 0;
   const posicion = ida ? t : 1 - t;
-  const sumado = (hechas + t) * valorVuelta;
-  const mostrado = ganado + sumado;
-  const total = Math.max(proyectado, mostrado, 1);
-  const tramos = lineas.filter((l) => l.monto > 0);
-  const pct = (n: number) => `${(n / total) * 100}%`;
+  const extra = (hechas + t) * valorVuelta;
+  const haberes = lineas.filter((l) => l.monto > 0);
+  const maxExtra = VUELTAS_DEMO * valorVuelta;
 
   return (
     <div className="poder">
       <div className="row" style={{ alignItems: "baseline" }}>
-        <div key={pulso} className={`big poder-monto ${pulso ? "latido" : ""}`} style={{ fontSize: 40, fontVariantNumeric: "tabular-nums" }}>{plata(mostrado)}</div>
-        {pulso > 0 && <span key={`f${pulso}`} className="poder-mas">+{plata(valorVuelta)}</span>}
+        <span>Haberes del mes</span>
+        <b style={{ fontVariantNumeric: "tabular-nums", fontSize: 20 }}>{plata(ganado)}</b>
       </div>
+      <div style={{ fontSize: 13, opacity: 0.85 }}>{haberes.map((l) => `${l.concepto} ${plata(l.monto)}`).join(" · ")}</div>
 
+      <div className="row" style={{ alignItems: "baseline", marginTop: 6 }}>
+        <span>Extra por las vueltas</span>
+        <span key={pulso} className={`poder-monto ${pulso ? "latido" : ""}`} style={{ fontFamily: "var(--display)", fontWeight: 800, fontSize: 30, color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>+{plata(extra)}</span>
+      </div>
       <div className="poder-ruta" aria-hidden="true">
         <div className="poder-calle" />
         <div className="poder-bus" style={{ left: `calc(${posicion * 100}% - ${posicion * 46}px)` }}>
@@ -112,33 +120,24 @@ export function BarraDePoder({ lineas, ganado, proyectado, valorVuelta, vueltasH
       </div>
       <div className="row" style={{ fontSize: 12, opacity: 0.85, marginTop: -4 }}>
         <span>{desde}</span>
-        <span>{enViaje ? (ida ? "ida →" : "← vuelta") : "en la cabecera"}</span>
+        <span>{enViaje ? (ida ? "ida →" : "← vuelta") : "detenido en la cabecera"}</span>
         <span>{hasta}</span>
       </div>
-
-      <div className={`poder-barra ${pulso ? "latido" : ""}`} key={`b${pulso}`} role="img" aria-label={`Ganado ${plata(mostrado)} de ${plata(total)} posibles este mes`}>
-        {tramos.map((l) => <span key={l.concepto} style={{ width: pct(l.monto), background: COLORES[l.concepto] ?? "#ccc" }} title={`${l.concepto}: ${plata(l.monto)}`} />)}
-        {sumado > 0 && <span className="poder-nuevo" style={{ width: pct(sumado) }} />}
+      <div className={`poder-barra ${pulso ? "latido" : ""}`} key={`b${pulso}`} role="img" aria-label={`Extra por vueltas: ${plata(extra)}`}>
+        <span className="poder-nuevo" style={{ width: `${maxExtra ? Math.min(100, (extra / maxExtra) * 100) : 0}%` }} />
       </div>
       <div className="row" style={{ fontSize: 13, opacity: 0.9 }}>
-        <span>{Math.round((mostrado / total) * 100)} % del mes</span>
-        <span>Si hacés todas tus planillas: {plata(total)}</span>
+        <span>{Math.min(VUELTAS_DEMO, hechas)} de {VUELTAS_DEMO} vueltas</span>
+        <span>Cada vuelta suma unos {plata(valorVuelta)}</span>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", fontSize: 12 }}>
-        {tramos.map((l) => (
-          <span key={l.concepto} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: COLORES[l.concepto] ?? "#ccc", display: "inline-block" }} />
-            {l.concepto}
-          </span>
-        ))}
-        {sumado > 0 && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span className="poder-nuevo" style={{ width: 10, height: 10, borderRadius: 3, display: "inline-block" }} />
-            Vueltas de ahora
-          </span>
-        )}
+      {!enViaje && simular && hechas >= VUELTAS_DEMO && (
+        <button className="btn yellow" onClick={() => { hechasRef.current = 0; setHechas(0); setT(0); setEnViaje(true); }}>Ver las vueltas de nuevo</button>
+      )}
+
+      <div className="row" style={{ borderTop: "1px solid rgba(246,241,231,.25)", paddingTop: 8, alignItems: "baseline" }}>
+        <span>Total en bruto</span>
+        <span className="big" style={{ fontSize: 34, fontVariantNumeric: "tabular-nums" }}>{plata(ganado + extra)}</span>
       </div>
-      {valorVuelta > 0 && <div style={{ fontSize: 14 }}>Cada vuelta te suma unos <b>{plata(valorVuelta)}</b>.{simular ? " En la demo el colectivo va y viene solo." : ""}</div>}
     </div>
   );
 }
