@@ -29,9 +29,9 @@ function useDetenido(demo: boolean): { detenido: boolean; motivo: string } {
 function Ventana({ titulo, nota, abierta = false, children }: { titulo: string; nota?: string; abierta?: boolean; children: ReactNode }) {
   return (
     <details className="card" open={abierta}>
-      <summary className="row" style={{ cursor: "pointer", listStyle: "none" }}>
-        <span className="eyebrow" style={{ fontSize: 14 }}>{titulo}</span>
-        {nota && <span className="chip warn">{nota}</span>}
+      <summary style={{ cursor: "pointer", listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="ventana-titulo">{titulo}</span>
+        {nota && <span className="chip warn" style={{ alignSelf: "flex-start" }}>{nota}</span>}
       </summary>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>{children}</div>
     </details>

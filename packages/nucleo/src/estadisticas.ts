@@ -13,6 +13,7 @@ const mediana = (xs: number[]) => {
   return v.length % 2 ? v[m]! : (v[m - 1]! + v[m]!) / 2;
 };
 const redondear = (n: number, d = 1) => Math.round(n * 10 ** d) / 10 ** d;
+const coma = (n: number) => String(n).replace(".", ",");
 
 // ---------------------------------------------------------------------------------------------
 // Demoras por vuelta
@@ -75,7 +76,7 @@ export function sectoresTrabados(
     .map((t, i) => ({
       desdeM: i * largoTramo,
       hastaM: Math.min(total, (i + 1) * largoTramo),
-      nombre: op.nombres?.[i] ?? `Km ${redondear((i * largoTramo) / 1000)} a ${redondear(Math.min(total, (i + 1) * largoTramo) / 1000)}`,
+      nombre: op.nombres?.[i] ?? `Km ${coma(redondear((i * largoTramo) / 1000))} a ${coma(redondear(Math.min(total, (i + 1) * largoTramo) / 1000))}`,
       minutosPorKm: metros[i]! > 0 ? redondear(t / (metros[i]! / 1000)) : 0,
       muestras: muestras[i]!,
     }))

@@ -348,7 +348,7 @@ export function Recorridos(p: P) {
                 {filas.map((f) => (
                   <tr key={f.recorrido + f.franja} style={{ borderTop: "1px solid var(--line)" }}>
                     <td style={{ padding: 6 }}>{f.recorrido}</td>
-                    <td style={{ padding: 6, textTransform: "capitalize" }}>{f.franja}</td>
+                    <td style={{ padding: 6 }}>{f.franja.charAt(0).toUpperCase() + f.franja.slice(1)}</td>
                     <td style={{ padding: 6 }}>{f.vueltas}</td>
                     <td style={{ padding: 6, minWidth: 160 }}>
                       <span style={{ display: "inline-block", width: `${Math.round((f.puntosPorHora / max) * 100)}px`, height: 10, background: "var(--coral)", borderRadius: 4, marginRight: 6 }} />
