@@ -14,7 +14,7 @@ function Barra({ valor, max, etiqueta, texto, destacada = false }: { valor: numb
   const ancho = max > 0 ? Math.max(3, Math.round((valor / max) * 100)) : 0;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "86px minmax(0,1fr) 62px", gap: 8, alignItems: "center", fontSize: 14 }}>
-      <span className="muted" style={{ textTransform: "capitalize" }}>{etiqueta}</span>
+      <span className="muted">{etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1)}</span>
       <span style={{ background: "var(--bg)", borderRadius: 6, height: 14, overflow: "hidden" }}>
         <span style={{ display: "block", width: `${ancho}%`, height: "100%", background: destacada ? "var(--coral)" : "var(--navy)", borderRadius: 6 }} />
       </span>
@@ -141,7 +141,7 @@ export function Estadisticas(p: { fuente: Fuente; sesion: Sesion; planillas: Pla
         {sueldo ? (
           <>
             <BarraDePoder lineas={sueldo.lineas} ganado={sueldo.total} proyectado={sueldo.proyectado} valorVuelta={sueldo.valorVuelta} vueltasHoy={p.recorrido.vueltasHoy} simular={p.fuente.modo === "demo"} desde={p.config?.cabeceras[0]?.nombre} hasta={p.config?.cabeceras.at(-1)?.nombre} />
-            <div>llevás ganado en bruto, antes de los descuentos, con {sueldo.diasTrabajados} días trabajados.</div>
+            <div className="eyebrow" style={{ color: "var(--accent)", marginTop: 6 }}>Cómo se calcula ({sueldo.diasTrabajados} días trabajados)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 14 }}>
               {sueldo.lineas.filter((l) => l.monto > 0 || l.faltaCargar).map((l) => (
                 <div key={l.concepto} className="row" style={{ borderTop: "1px solid rgba(246,241,231,0.18)", paddingTop: 4 }}>
@@ -173,7 +173,7 @@ export function Estadisticas(p: { fuente: Fuente; sesion: Sesion; planillas: Pla
             Hiciste <b>{prod.vueltasHechas}</b> vueltas de las <b>{prod.vueltasPlanificadas}</b> de tu planilla y saliste a horario <b>{salidasAHorario} de cada 10</b> veces.
           </>
         }
-        explicacion={`Manejaste ${prod.horasManejando} horas y ${prod.kmRecorridos} km en los últimos 30 días. ${p.recorrido.activo ? `Hoy van ${p.recorrido.vueltasHoy} vueltas, contadas solas.` : p.recorrido.motivo}.`}
+        explicacion={`Manejaste ${String(prod.horasManejando).replace(".", ",")} horas y ${prod.kmRecorridos} km en los últimos 30 días. ${p.recorrido.activo ? `Hoy van ${p.recorrido.vueltasHoy} vueltas, contadas solas.` : p.recorrido.motivo}.`}
       />
 
       <Bloque
@@ -197,7 +197,7 @@ export function Estadisticas(p: { fuente: Fuente; sesion: Sesion; planillas: Pla
         conclusion={tramoPeor ? <>El tramo más trabado es del <b>{tramoPeor.nombre.replace("Km ", "km ")}</b>: tardás <b>{tramoPeor.minutosPorKm} min por km</b>, {promedioTramos ? `${Math.round(tramoPeor.minutosPorKm / promedioTramos * 10) / 10} veces lo normal del recorrido` : ""}.</> : "Hacen falta unas vueltas con el GPS para ver los tramos."}
         explicacion="Minutos que tardás en hacer un kilómetro en cada tramo del recorrido. Más minutos = más trabado."
       >
-        {sectores.slice(0, 4).map((s, i) => <Barra key={s.desdeM} etiqueta={s.nombre.replace("Km ", "km ")} valor={s.minutosPorKm} max={tramoPeor?.minutosPorKm ?? 0} texto={`${s.minutosPorKm} min`} destacada={i === 0} />)}
+        {sectores.slice(0, 4).map((s, i) => <Barra key={s.desdeM} etiqueta={s.nombre} valor={s.minutosPorKm} max={tramoPeor?.minutosPorKm ?? 0} texto={`${s.minutosPorKm} min`} destacada={i === 0} />)}
       </Bloque>
 
       <Bloque

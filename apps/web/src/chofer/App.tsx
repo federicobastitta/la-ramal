@@ -14,6 +14,7 @@ import { Papeles, PlanillaDeHoy, usePapeles, type DatosPapeles } from "./Papeles
 import { Estadisticas } from "./Estadisticas";
 import { Companeros } from "./Companeros";
 import { AvisosMuestra } from "./AvisosMuestra";
+import { InicioHero } from "./InicioHero";
 import { useRecorridoAutomatico, type EstadoRecorrido } from "../dispositivo/recorrido-automatico";
 import { hoyISO } from "../compartido/pdf";
 import type { ConfigRecorrido } from "@la-ramal/nucleo";
@@ -77,7 +78,7 @@ export function AppChofer() {
   if (!sesion || !fuente) return <SinAlta />;
 
   const pantallas: Record<Tab, ReactElement> = {
-    inicio: <Inicio sesion={sesion} panico={panico} boton={boton} vincular={() => bt.current?.vincular().catch((e: Error) => aviso.avisar(e.message))} ir={setTab} avisar={aviso.avisar} papeles={papeles} recorrido={recorrido} />,
+    inicio: <Inicio sesion={sesion} panico={panico} boton={boton} vincular={() => bt.current?.vincular().catch((e: Error) => aviso.avisar(e.message))} ir={setTab} avisar={aviso.avisar} papeles={papeles} recorrido={recorrido} fuente={fuente} />,
     incidente: (
       <>
         <Reportar key="incidente" modo="incidente" fuente={fuente} sesion={sesion} cola={cola} enCola={enCola} mios={reportes.filter((r) => r.choferId === sesion.uid && r.tipo !== "coche")} avisar={aviso.avisar} />
@@ -90,28 +91,29 @@ export function AppChofer() {
     terminal: <Companeros fuente={fuente} sesion={sesion} avisar={aviso.avisar} />,
   };
   const avisosPapeles = papeles.comunicados.filter((c) => !c.leidos.includes(sesion.uid)).length + papeles.ofrecidos.length;
-  const tabs: [Tab, string, keyof typeof Icono][] = [["inicio", "Inicio", "inicio"], ["incidente", "Incidente", "alerta"], ["averia", "Avería", "llave"], ["papeles", avisosPapeles ? `Papeles (${avisosPapeles})` : "Papeles", "papel"], ["numeros", "Números", "grafico"], ["terminal", "Compañeros", "grupo"]];
+  const tabs: [Tab, string, keyof typeof Icono][] = [["inicio", "Inicio", "inicio"], ["incidente", "Incidente", "alerta"], ["averia", "Avería", "llave"], ["papeles", "Papeles", "papel"], ["numeros", "Números", "grafico"], ["terminal", "Compañeros", "grupo"]];
 
   return (
     <>
       <div className="phone">
         <div className="bar">
-          <div>
-            <div className="who">{sesion.lineaNombre} · {sesion.cocheId}</div>
-            <h2>Hola, {sesion.nombre.split(" ")[0]}</h2>
+          <div style={{ minWidth: 0 }}>
+            <div className="bar-marca">LA RAMAL</div>
+            <div className="who">{sesion.cocheId} · {sesion.lineaNombre}</div>
           </div>
-          <span className={`chip ${boton.estado === "conectado" ? "ok" : "warn"}`}>
+          <span className={`chip ${boton.estado === "conectado" ? "ok" : "warn"}`} style={{ whiteSpace: "nowrap" }} title={boton.estado === "sin_soporte" ? "El botón Bluetooth necesita Chrome en Android" : undefined}>
             <span className="dot" />
-            {boton.estado === "conectado" ? `Botón conectado${boton.bateria !== null ? ` · ${boton.bateria}%` : ""}` : boton.estado === "sin_soporte" ? "Botón: usá Chrome" : "Botón sin conectar"}
+            {boton.estado === "conectado" ? `Botón ok${boton.bateria !== null ? ` · ${boton.bateria}%` : ""}` : "Sin botón"}
           </span>
         </div>
         {fuente.modo === "demo" && <AvisosMuestra ir={setTab} />}
         <div className="screen">{pantallas[tab]}</div>
         <nav className="tabs" aria-label="Secciones">
           {tabs.map(([k, t, ic]) => (
-            <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}>
+            <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined} style={{ position: "relative" }}>
               {Icono[ic]!()}
               {t}
+              {k === "papeles" && avisosPapeles > 0 && <span className="insignia" aria-label={`${avisosPapeles} novedades`}>{avisosPapeles}</span>}
             </button>
           ))}
         </nav>
@@ -130,7 +132,7 @@ function SinAlta() {
   );
 }
 
-function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton: { estado: EstadoBoton }; vincular: () => void; ir: (t: Tab) => void; avisar: (s: string) => void; papeles: DatosPapeles; recorrido: EstadoRecorrido }) {
+function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton: { estado: EstadoBoton }; vincular: () => void; ir: (t: Tab) => void; avisar: (s: string) => void; papeles: DatosPapeles; recorrido: EstadoRecorrido; fuente: Fuente }) {
   const { estado, despachar, cancelar } = p.panico;
   const [pin, setPin] = useState("");
   const [, refrescar] = useState(0);
@@ -149,6 +151,7 @@ function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton
 
   return (
     <>
+      <InicioHero fuente={p.fuente} sesion={p.sesion} planillas={p.papeles.planillas} recibos={p.papeles.recibos} vueltasHoy={p.recorrido.vueltasHoy} ir={p.ir} />
       {estado.fase === "activa" || estado.fase === "enviando" ? (
         <div className="alarm" role="alert">
           <h3>{estado.fase === "enviando" ? "Mandando la alerta…" : "Alerta de pánico enviada"}</h3>
@@ -199,7 +202,6 @@ function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton
       )}
 
       <PlanillaDeHoy planillas={p.papeles.planillas} />
-      {p.recorrido.activo && <div className="muted" style={{ textAlign: "center" }}>Vueltas de hoy contadas solas: <b>{p.recorrido.vueltasHoy}</b></div>}
       {p.papeles.comunicados.filter((c) => !c.leidos.includes(p.sesion.uid)).slice(0, 1).map((c) => (
         <button key={c.id} className="notif" onClick={() => p.ir("papeles")} style={{ border: 0, textAlign: "left" }}><span>Aviso de la empresa: {c.titulo}</span><span>Ver</span></button>
       ))}

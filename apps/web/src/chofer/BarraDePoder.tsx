@@ -134,9 +134,9 @@ export function BarraDePoder({ lineas, ganado, proyectado, valorVuelta, vueltasH
         <button className="btn yellow" onClick={() => { hechasRef.current = 0; setHechas(0); setT(0); setEnViaje(true); }}>Ver las vueltas de nuevo</button>
       )}
 
-      <div className="row" style={{ borderTop: "1px solid rgba(246,241,231,.25)", paddingTop: 8, alignItems: "baseline" }}>
-        <span>Total en bruto</span>
-        <span className="big" style={{ fontSize: 34, fontVariantNumeric: "tabular-nums" }}>{plata(ganado + extra)}</span>
+      <div style={{ borderTop: "1px solid rgba(246,241,231,.25)", paddingTop: 8 }}>
+        <div style={{ fontSize: 14, opacity: 0.9 }}>Total en bruto</div>
+        <div className="big" style={{ fontSize: 34, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{plata(ganado + extra)}</div>
       </div>
     </div>
   );
