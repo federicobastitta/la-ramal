@@ -23,6 +23,15 @@ Papeles, truco, prode y el resto de lo que está en el folleto quedan para la et
 
 ## Probarla ya (modo demo, sin servidor)
 
+Publicada en GitHub Pages:
+- App del chofer: https://federicobastitta.github.io/la-ramal/
+- Panel de la línea: https://federicobastitta.github.io/la-ramal/panel.html
+
+Abrí las dos en el mismo navegador (dos pestañas): lo que mandás desde la app aparece en el panel.
+Los datos quedan solo en ese navegador. PIN de la demo: `7391` cancela; `7392` es el de coacción.
+
+En tu computadora:
+
 ```bash
 npm install
 npm run dev
