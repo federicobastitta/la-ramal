@@ -1,0 +1,7 @@
+{
+  "indexes": [
+    { "collectionGroup": "reportes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "choferId", "order": "ASCENDING" }, { "fieldPath": "creadoEn", "order": "DESCENDING" }] },
+    { "collectionGroup": "reportes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "tipo", "order": "ASCENDING" }, { "fieldPath": "creadoEn", "order": "DESCENDING" }] }
+  ],
+  "fieldOverrides": []
+}

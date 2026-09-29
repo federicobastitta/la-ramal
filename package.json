@@ -1,0 +1,30 @@
+{
+  "name": "la-ramal",
+  "private": true,
+  "description": "LA RAMAL: la app de los choferes de colectivo y el panel de la línea",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "functions"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @la-ramal/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test:reglas": "firebase emulators:exec --only firestore --project demo-la-ramal \"vitest run --root reglas-test\"",
+    "e2e": "node e2e/demo.mjs",
+    "verificar": "npm run typecheck && npm test && npm run build && npm run test:reglas"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase-tools": "^15.32.0",
+    "playwright": "1.56",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.2",
+    "wait-on": "^9.5.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
