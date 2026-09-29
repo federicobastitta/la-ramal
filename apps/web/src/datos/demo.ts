@@ -126,3 +126,6 @@ export const SESION_DEMO_CHOFER: Sesion = {
 };
 
 export const SESION_DEMO_TRAFICO: Sesion = { ...SESION_DEMO_CHOFER, uid: "demo-trafico", nombre: "Tráfico (ejemplo)", rol: "trafico", cocheId: "" };
+
+/** Solo demo: si el navegador no da el GPS (por ejemplo dentro de un marco), se usa este punto de Quilmes. */
+export const UBICACION_DEMO = { lat: -34.7206, lng: -58.2546, precisionM: 25 };

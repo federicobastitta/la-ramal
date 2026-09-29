@@ -12,7 +12,7 @@ export default defineConfig({
     target: "es2022",
     sourcemap: true,
     rollupOptions: {
-      input: { chofer: resolve(import.meta.dirname, "index.html"), panel: resolve(import.meta.dirname, "panel.html") },
+      input: { chofer: resolve(import.meta.dirname, "index.html"), panel: resolve(import.meta.dirname, "panel.html"), demo: resolve(import.meta.dirname, "demo.html") },
     },
   },
   test: { environment: "node" },
