@@ -7,6 +7,7 @@ import type { Fuente, Sesion } from "../datos";
 import { idb } from "../datos/idb";
 import { fechaLinda, hoyISO, plata, sumarDias } from "../compartido/pdf";
 import type { EstadoRecorrido } from "../dispositivo/recorrido-automatico";
+import { BarraDePoder } from "./BarraDePoder";
 
 /** Barra horizontal simple, a escala del máximo. */
 function Barra({ valor, max, etiqueta, texto, destacada = false }: { valor: number; max: number; etiqueta: string; texto: string; destacada?: boolean }) {
@@ -63,7 +64,16 @@ export function Estadisticas(p: { fuente: Fuente; sesion: Sesion; planillas: Pla
     if (!escala) return null;
     const anios = [...p.recibos].sort((a, b) => b.periodo.localeCompare(a.periodo)).find((r) => r.antiguedadAnios !== undefined)?.antiguedadAnios ?? 0;
     const kmMes = jornadas.filter((j) => j.fecha.startsWith(hoy.slice(0, 7))).reduce((s, j) => s + j.km, 0);
-    return { ...estimarSueldo(escala, p.planillas, hoy, anios, kmMes), anios };
+    const ahora = estimarSueldo(escala, p.planillas, hoy, anios, kmMes);
+    // Lo que se puede ganar si se hacen todas las planillas del mes (proyección al último día).
+    const [a, m] = hoy.split("-").map(Number) as [number, number];
+    const finDeMes = `${hoy.slice(0, 7)}-${String(new Date(a, m, 0).getDate()).padStart(2, "0")}`;
+    const proyectado = estimarSueldo(escala, p.planillas, finDeMes, anios, kmMes).total;
+    // Lo que suma cada vuelta: todo lo que no es fijo (básico y antigüedad) repartido en las vueltas del mes.
+    const vueltasMes = p.planillas.filter((x) => x.fecha.startsWith(hoy.slice(0, 7)) && !x.franco).reduce((s, x) => s + x.vueltas.length, 0);
+    const fijo = ahora.lineas.filter((l) => l.concepto === "Básico" || l.concepto === "Antigüedad").reduce((s, l) => s + l.monto, 0);
+    const valorVuelta = vueltasMes ? Math.round((proyectado - fijo) / vueltasMes) : 0;
+    return { ...ahora, anios, proyectado, valorVuelta };
   }, [escala, p.recibos, p.planillas, jornadas, hoy]);
 
   const prod = useMemo(() => {
@@ -130,7 +140,7 @@ export function Estadisticas(p: { fuente: Fuente; sesion: Sesion; planillas: Pla
         <span className="eyebrow" style={{ color: "var(--accent)" }}>Tu plata este mes</span>
         {sueldo ? (
           <>
-            <div className="big" style={{ fontSize: 40 }}>{plata(sueldo.total)}</div>
+            <BarraDePoder lineas={sueldo.lineas} ganado={sueldo.total} proyectado={sueldo.proyectado} valorVuelta={sueldo.valorVuelta} vueltasHoy={p.recorrido.vueltasHoy} simular={p.fuente.modo === "demo"} desde={p.config?.cabeceras[0]?.nombre} hasta={p.config?.cabeceras.at(-1)?.nombre} />
             <div>llevás ganado en bruto, antes de los descuentos, con {sueldo.diasTrabajados} días trabajados.</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 14 }}>
               {sueldo.lineas.filter((l) => l.monto > 0 || l.faltaCargar).map((l) => (
