@@ -147,3 +147,19 @@ input[type=text],input[type=password],textarea,select{font:inherit;color:var(--f
 .insignia{position:absolute;top:4px;right:calc(50% - 20px);background:var(--bad);color:#fff;border-radius:999px;font-size:11px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px}
 .ventana-titulo{font-size:13px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;color:var(--amber)}
 .tabs button{white-space:nowrap}
+
+/* ---- Radio AM/FM ---- */
+.radio{border-top:1px solid var(--line);background:var(--navy);color:var(--on-navy)}
+.radio-barra{display:flex;align-items:center;gap:6px;padding:8px 10px}
+.radio-emisora{flex:1;display:flex;gap:10px;align-items:center;background:none;border:0;color:inherit;text-align:left;min-width:0;padding:0}
+.radio-emisora b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.radio-dial{background:var(--accent);color:var(--on-accent);border-radius:8px;padding:4px 8px;font-family:var(--display);font-weight:800;font-size:14px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.radio-estado{display:block;font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.radio-boton{width:40px;height:40px;border-radius:50%;border:1px solid rgba(246,241,231,.35);background:none;color:inherit;font-size:20px;line-height:1;flex-shrink:0}
+.radio-boton.grande{width:48px;height:48px;background:var(--accent);color:var(--on-accent);border-color:transparent;font-size:18px}
+.radio-lista{padding:4px 10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--surface);color:var(--fg)}
+.radio-grilla{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.radio-opcion{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:700;font-size:13px;min-height:64px}
+.radio-opcion.actual{background:var(--navy);color:var(--on-navy);border-color:var(--navy)}
+.radio-frec{font-family:var(--display);font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
+.radio-sin{font-size:11px;font-weight:600;color:var(--bad)}
