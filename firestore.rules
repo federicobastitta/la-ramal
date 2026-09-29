@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// Reglas de seguridad de LA RAMAL.
+// El rol ("chofer", "trafico", "taller", "personal", "admin", "delegado") y la línea vienen en los
+// custom claims del usuario; los pone solo la función altaDePersona. Nadie puede escribir su propio rol.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function dentro() { return request.auth != null; }
+    function deLinea(l) { return dentro() && request.auth.token.linea == l; }
+    function rol() { return request.auth.token.rol; }
+    function empresa(l) { return deLinea(l) && rol() in ['trafico', 'taller', 'personal', 'admin']; }
+    function chofer(l) { return deLinea(l) && rol() == 'chofer'; }
+    function nuevo() { return request.resource.data; }
+    function cambia() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function ubicacionValida(u) {
+      return u is map && u.keys().hasOnly(['lat', 'lng', 'precisionM', 'en'])
+        && u.lat is number && u.lat >= -90 && u.lat <= 90
+        && u.lng is number && u.lng >= -180 && u.lng <= 180
+        && u.precisionM is number && u.precisionM >= 0 && u.en is number;
+    }
+
+    match /lineas/{l} {
+      allow read: if deLinea(l);
+      allow write: if false;
+
+      match /reportes/{id} {
+        // El chofer ve sus reportes y los cortes/choques/embotellamientos de su línea (para "Cortes en vivo").
+        allow read: if empresa(l)
+          || (chofer(l) && (resource.data.choferId == request.auth.uid || resource.data.tipo in ['corte', 'embotellamiento', 'choque']));
+
+        // Crear: solo el chofer, a su nombre, en su línea, recién recibido y sin clasificar (eso lo hace el servidor).
+        allow create: if chofer(l)
+          && nuevo().keys().hasOnly(['id', 'lineaId', 'cocheId', 'choferId', 'tipo', 'texto', 'ubicacion', 'creadoEn', 'adjuntos', 'estado', 'recibidoEn'])
+          && nuevo().id == id && nuevo().lineaId == l && nuevo().choferId == request.auth.uid
+          && nuevo().estado == 'recibido'
+          && nuevo().tipo in ['coche', 'embotellamiento', 'choque', 'agresor', 'corte', 'otro']
+          && nuevo().texto is string && nuevo().texto.size() <= 1000
+          && nuevo().cocheId is string && nuevo().cocheId.size() > 0
+          && nuevo().adjuntos is list && nuevo().adjuntos.size() <= 6
+          && nuevo().creadoEn is number
+          && ubicacionValida(nuevo().ubicacion);
+
+        // Cambiar el estado: solo la empresa, y solo el estado.
+        allow update: if empresa(l)
+          && cambia().hasOnly(['estado', 'actualizadoEn'])
+          && nuevo().estado in ['recibido', 'en_taller', 'publicado', 'caso_tomado', 'cerrado'];
+
+        allow delete: if false;
+      }
+
+      match /panicos/{id} {
+        // Si se "canceló" con el PIN de coacción, el chofer ya no puede leerla (en su celular se ve cerrada).
+        allow read: if empresa(l)
+          || (chofer(l) && resource.data.choferId == request.auth.uid && resource.data.get('coaccion', false) == false);
+
+        allow create: if chofer(l)
+          && nuevo().keys().hasOnly(['id', 'lineaId', 'cocheId', 'choferId', 'estado', 'desde', 'ubicaciones', 'origen'])
+          && nuevo().id == id && nuevo().lineaId == l && nuevo().choferId == request.auth.uid
+          && nuevo().estado == 'activa'
+          && nuevo().origen in ['boton_bluetooth', 'pantalla', 'prueba']
+          && nuevo().ubicaciones is list && nuevo().ubicaciones.size() <= 5;
+
+        // El chofer solo suma posiciones (nunca cierra: eso lo hace el servidor con el PIN).
+        // La empresa solo confirma.
+        allow update: if (chofer(l) && resource.data.choferId == request.auth.uid && resource.data.estado != 'cerrada'
+              && cambia().hasOnly(['ubicaciones']) && nuevo().ubicaciones.size() <= 500)
+          || (empresa(l) && resource.data.estado == 'activa' && nuevo().estado == 'confirmada'
+              && cambia().hasOnly(['estado', 'confirmadaEn']));
+
+        allow delete: if false;
+      }
+
+      match /personas/{uid} {
+        allow read: if (deLinea(l) && request.auth.uid == uid) || empresa(l);
+        allow write: if false;
+      }
+
+      // Hashes de los PIN e intentos fallidos: solo el servidor.
+      match /privado/{uid} {
+        allow read, write: if false;
+      }
+
+      match /auditoria/{doc} {
+        allow read: if deLinea(l) && rol() == 'admin';
+        allow write: if false;
+      }
+
+      // Canal del gremio: lo leen choferes y delegados; la empresa NO. Escribe solo el delegado.
+      match /gremio/{doc=**} {
+        allow read: if deLinea(l) && rol() in ['chofer', 'delegado'];
+        allow write: if deLinea(l) && rol() == 'delegado';
+      }
+    }
+  }
+}

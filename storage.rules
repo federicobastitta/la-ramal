@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Fotos, videos y audios de los reportes. Cada chofer sube solo en su carpeta; nadie borra ni reemplaza.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /lineas/{l}/reportes/{uid}/{reporte}/{archivo} {
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.linea == l
+        && request.auth.token.rol == 'chofer'
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType.matches('(image|video|audio)/.*');
+      allow read: if request.auth != null && request.auth.token.linea == l;
+      allow update, delete: if false;
+    }
+  }
+}
