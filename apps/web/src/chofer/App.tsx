@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as PE, type ReactElement } from "react";
-import { MAX_BYTES_ADJUNTO, NOMBRE_ESTADO, NOMBRE_TIPO, NuevoReporte, TIPOS_REPORTE, progresoPanico, type Adjunto as TAdjunto, type Reporte, type TipoReporte } from "@la-ramal/nucleo";
+import { MAX_BYTES_ADJUNTO, NOMBRE_ESTADO, NOMBRE_TIPO, NuevoReporte, PARTES_COCHE, TIPOS_INCIDENTE, progresoPanico, type Adjunto as TAdjunto, type Reporte, type TipoReporte } from "@la-ramal/nucleo";
 import type { Cola } from "@la-ramal/nucleo";
 import { crearFuente, type ArchivoLocal, type Fuente, type Sesion } from "../datos";
 import { crearColaDeReportes, type EnvioReporte } from "../datos/cola-idb";
@@ -10,9 +10,14 @@ import { Icono } from "../compartido/iconos";
 import { Adjunto } from "../compartido/Adjunto";
 import { haceCuanto, hora, useAviso } from "../compartido/useAviso";
 import { usePanico } from "./usePanico";
+import { Papeles, PlanillaDeHoy, usePapeles, type DatosPapeles } from "./Papeles";
+import { Estadisticas } from "./Estadisticas";
+import { useRecorridoAutomatico, type EstadoRecorrido } from "../dispositivo/recorrido-automatico";
+import { hoyISO } from "../compartido/pdf";
+import type { ConfigRecorrido } from "@la-ramal/nucleo";
 import { UBICACION_DEMO } from "../datos/demo";
 
-type Tab = "inicio" | "reportar" | "calle" | "papeles" | "terminal";
+type Tab = "inicio" | "incidente" | "averia" | "papeles" | "numeros" | "terminal";
 type Borrador = { tipo: TipoReporte; archivos: { tipo: TAdjunto["tipo"]; blob: Blob; url: string }[] };
 
 export function AppChofer() {
@@ -26,6 +31,9 @@ export function AppChofer() {
   const aviso = useAviso();
   const panico = usePanico(fuente, sesion ?? null);
   const bt = useRef<BotonBluetooth | null>(null);
+  const papeles = usePapeles(fuente, sesion ?? null);
+  const [config, setConfig] = useState<ConfigRecorrido | undefined>(undefined);
+  const recorrido = useRecorridoAutomatico(fuente, sesion ?? null, papeles.planillas.find((x) => x.fecha === hoyISO()), config);
 
   useEffect(() => {
     void crearFuente("chofer").then(async (f) => {
@@ -38,6 +46,11 @@ export function AppChofer() {
   useEffect(() => {
     if (!fuente || !sesion) return;
     return fuente.escucharReportes(sesion.lineaId, setReportes);
+  }, [fuente, sesion]);
+
+  useEffect(() => {
+    if (!fuente || !sesion) return;
+    return fuente.escuchar(sesion.lineaId, "configuracion", [], (xs) => setConfig(xs[0]));
   }, [fuente, sesion]);
 
   useEffect(() => {
@@ -62,13 +75,20 @@ export function AppChofer() {
   if (!sesion || !fuente) return <SinAlta />;
 
   const pantallas: Record<Tab, ReactElement> = {
-    inicio: <Inicio sesion={sesion} panico={panico} boton={boton} vincular={() => bt.current?.vincular().catch((e: Error) => aviso.avisar(e.message))} ir={setTab} avisar={aviso.avisar} />,
-    reportar: <Reportar fuente={fuente} sesion={sesion} cola={cola} enCola={enCola} mios={reportes.filter((r) => r.choferId === sesion.uid)} avisar={aviso.avisar} />,
-    calle: <Calle reportes={reportes} ir={setTab} />,
-    papeles: <Papeles />,
+    inicio: <Inicio sesion={sesion} panico={panico} boton={boton} vincular={() => bt.current?.vincular().catch((e: Error) => aviso.avisar(e.message))} ir={setTab} avisar={aviso.avisar} papeles={papeles} recorrido={recorrido} />,
+    incidente: (
+      <>
+        <Reportar key="incidente" modo="incidente" fuente={fuente} sesion={sesion} cola={cola} enCola={enCola} mios={reportes.filter((r) => r.choferId === sesion.uid && r.tipo !== "coche")} avisar={aviso.avisar} />
+        <Calle reportes={reportes} />
+      </>
+    ),
+    averia: <Reportar key="averia" modo="averia" fuente={fuente} sesion={sesion} cola={cola} enCola={enCola} mios={reportes.filter((r) => r.choferId === sesion.uid && r.tipo === "coche")} avisar={aviso.avisar} />,
+    papeles: <Papeles fuente={fuente} sesion={sesion} datos={papeles} avisar={aviso.avisar} />,
+    numeros: <Estadisticas fuente={fuente} sesion={sesion} planillas={papeles.planillas} config={config} recorrido={recorrido} avisar={aviso.avisar} />,
     terminal: <Terminal />,
   };
-  const tabs: [Tab, string, keyof typeof Icono][] = [["inicio", "Inicio", "inicio"], ["reportar", "Reportar", "camara"], ["calle", "Calle", "calle"], ["papeles", "Papeles", "papel"], ["terminal", "Terminal", "taza"]];
+  const avisosPapeles = papeles.comunicados.filter((c) => !c.leidos.includes(sesion.uid)).length + papeles.ofrecidos.length;
+  const tabs: [Tab, string, keyof typeof Icono][] = [["inicio", "Inicio", "inicio"], ["incidente", "Incidente", "alerta"], ["averia", "Avería", "llave"], ["papeles", avisosPapeles ? `Papeles (${avisosPapeles})` : "Papeles", "papel"], ["numeros", "Números", "grafico"], ["terminal", "Compañeros", "grupo"]];
 
   return (
     <>
@@ -107,7 +127,7 @@ function SinAlta() {
   );
 }
 
-function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton: { estado: EstadoBoton }; vincular: () => void; ir: (t: Tab) => void; avisar: (s: string) => void }) {
+function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton: { estado: EstadoBoton }; vincular: () => void; ir: (t: Tab) => void; avisar: (s: string) => void; papeles: DatosPapeles; recorrido: EstadoRecorrido }) {
   const { estado, despachar, cancelar } = p.panico;
   const [pin, setPin] = useState("");
   const [, refrescar] = useState(0);
@@ -175,20 +195,16 @@ function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton
         </div>
       )}
 
-      <div className="card">
-        <div className="row"><span className="eyebrow">Tu planilla de hoy</span><span className="chip warn">Ejemplo</span></div>
-        <div className="row">
-          <div><div className="big">05:10</div><div className="muted">Salida de la cabecera</div></div>
-          <div style={{ textAlign: "right" }}><div className="big">4</div><div className="muted">vueltas</div></div>
-        </div>
-        <div className="muted">La planilla real llega cuando la línea cargue los diagramas (etapa 2).</div>
-      </div>
-
+      <PlanillaDeHoy planillas={p.papeles.planillas} />
+      {p.recorrido.activo && <div className="muted" style={{ textAlign: "center" }}>Vueltas de hoy contadas solas: <b>{p.recorrido.vueltasHoy}</b></div>}
+      {p.papeles.comunicados.filter((c) => !c.leidos.includes(p.sesion.uid)).slice(0, 1).map((c) => (
+        <button key={c.id} className="notif" onClick={() => p.ir("papeles")} style={{ border: 0, textAlign: "left" }}><span>Aviso de la empresa: {c.titulo}</span><span>Ver</span></button>
+      ))}
       <div className="grid2">
-        <button className="act primary" onClick={() => p.ir("reportar")}>{Icono.camara!()}Reportar con foto</button>
-        <button className="act" onClick={() => p.ir("reportar")}>{Icono.llave!()}Falla del coche</button>
-        <button className="act" onClick={() => p.ir("calle")}>{Icono.calle!()}Cortes en vivo</button>
-        <button className="act" onClick={() => p.ir("terminal")}>{Icono.taza!()}Terminal</button>
+        <button className="act primary" onClick={() => p.ir("incidente")}>{Icono.alerta!()}Reportar incidente<span className="muted" style={{ color: "inherit", opacity: 0.8 }}>Lo vial: tránsito, choque, corte</span></button>
+        <button className="act primary" onClick={() => p.ir("averia")}>{Icono.llave!()}Reportar avería<span className="muted" style={{ color: "inherit", opacity: 0.8 }}>El coche: foto, video o ruido</span></button>
+        <button className="act" onClick={() => p.ir("incidente")}>{Icono.calle!()}Cortes en vivo</button>
+        <button className="act" onClick={() => p.ir("terminal")}>{Icono.grupo!()}Compañeros</button>
       </div>
     </>
   );
@@ -196,8 +212,10 @@ function Inicio(p: { sesion: Sesion; panico: ReturnType<typeof usePanico>; boton
 
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4", "video/webm": "webm", "audio/webm": "webm", "audio/mp4": "m4a", "audio/ogg": "ogg" };
 
-function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> | null; enCola: number; mios: Reporte[]; avisar: (s: string) => void }) {
-  const [b, setB] = useState<Borrador>({ tipo: "coche", archivos: [] });
+function Reportar(p: { modo: "incidente" | "averia"; fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> | null; enCola: number; mios: Reporte[]; avisar: (s: string) => void }) {
+  const averia = p.modo === "averia";
+  const [b, setB] = useState<Borrador>({ tipo: averia ? "coche" : "embotellamiento", archivos: [] });
+  const [parte, setParte] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
   const [mandando, setMandando] = useState(false);
   const gpsReal = useUbicacion();
@@ -228,7 +246,7 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
       cocheId: p.sesion.cocheId,
       choferId: p.sesion.uid,
       tipo: b.tipo,
-      texto,
+      texto: averia && parte ? `${parte}: ${texto}`.replace(/: $/, "") : texto,
       ubicacion: gps.ubicacion,
       creadoEn: Date.now(),
       adjuntos: b.archivos.map((a, i) => ({ tipo: a.tipo, ruta: archivos[i]!.ruta, mime: a.blob.type || "application/octet-stream", bytes: a.blob.size })),
@@ -243,18 +261,30 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
     b.archivos.forEach((a) => URL.revokeObjectURL(a.url));
     setB({ tipo: b.tipo, archivos: [] });
     setTexto("");
+    setParte(null);
     p.avisar(r.enviados.includes(id) ? "Enviado a la línea" : "Sin señal: queda guardado y sale solo cuando vuelva");
   };
 
   return (
     <>
       <div className="card">
-        <h3>¿Qué querés reportar?</h3>
-        <div className="types">
-          {TIPOS_REPORTE.map((t) => (
-            <button key={t} className="type" aria-pressed={b.tipo === t} onClick={() => setB((x) => ({ ...x, tipo: t }))}>{NOMBRE_TIPO[t]}</button>
-          ))}
-        </div>
+        <h3>{averia ? "Reportar avería del coche" : "Reportar incidente en la calle"}</h3>
+        {averia ? (
+          <>
+            <div className="muted">¿Qué le notás a {p.sesion.cocheId}?</div>
+            <div className="types">
+              {PARTES_COCHE.map((t) => (
+                <button key={t} className="type" aria-pressed={parte === t} onClick={() => setParte(t)}>{t}</button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="types">
+            {TIPOS_INCIDENTE.map((t) => (
+              <button key={t} className="type" aria-pressed={b.tipo === t} onClick={() => setB((x) => ({ ...x, tipo: t }))}>{NOMBRE_TIPO[t]}</button>
+            ))}
+          </div>
+        )}
         {b.tipo === "agresor" && <p style={{ color: "var(--bad)", margin: 0 }}><b>Si estás en peligro, usá primero el botón de pánico.</b> Sacá la foto solo si es seguro.</p>}
         <div className="media">
           <label>{Icono.camara!()}Foto<input type="file" accept="image/*" capture="environment" onChange={(e) => { sumar("foto", e.target.files?.[0]); e.target.value = ""; }} /></label>
@@ -270,7 +300,7 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
           </div>
         )}
         <label className="f" htmlFor="r-texto">Contalo en pocas palabras
-          <textarea id="r-texto" rows={2} maxLength={1000} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ej.: el freno delantero hace ruido al frenar fuerte" />
+          <textarea id="r-texto" rows={2} maxLength={1000} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={averia ? "Ej.: hace ruido al frenar fuerte" : "Ej.: todo parado por obra en Mitre"} />
         </label>
         <div className="muted">
           {deEjemplo ? <>Ubicación de ejemplo: este navegador no da el GPS. En el celular va la ubicación real.</> : gps.ubicacion ? <>Ubicación lista (±{gps.ubicacion.precisionM} m). Va directo a la línea con {p.sesion.cocheId}, la hora y el lugar.</> : gps.error ?? "Buscando tu ubicación…"}
@@ -280,7 +310,7 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
       </div>
 
       <div className="card">
-        <span className="eyebrow">Tus reportes</span>
+        <span className="eyebrow">{averia ? "Tus averías reportadas" : "Tus incidentes reportados"}</span>
         {p.mios.length === 0 ? <div className="muted">Todavía no mandaste reportes. Cuando mandes uno, acá ves qué hizo la línea.</div> : (
           <div className="list">
             {p.mios.map((r) => (
@@ -300,10 +330,10 @@ function Reportar(p: { fuente: Fuente; sesion: Sesion; cola: Cola<EnvioReporte> 
   );
 }
 
-function Calle({ reportes, ir }: { reportes: Reporte[]; ir: (t: Tab) => void }) {
+function Calle({ reportes }: { reportes: Reporte[] }) {
   const ahora = Date.now();
   const enLaCalle = useMemo(
-    () => reportes.filter((r) => ["corte", "embotellamiento", "choque"].includes(r.tipo) && ahora - r.creadoEn < 3 * 3_600_000),
+    () => reportes.filter((r) => ["corte", "embotellamiento", "choque", "calle"].includes(r.tipo) && ahora - r.creadoEn < 3 * 3_600_000),
     [reportes, ahora],
   );
   return (
@@ -322,19 +352,7 @@ function Calle({ reportes, ir }: { reportes: Reporte[]; ir: (t: Tab) => void }) 
           ))}
         </div>
       )}
-      <button className="btn alt" onClick={() => ir("reportar")}>Avisar un corte</button>
     </div>
-  );
-}
-
-function Papeles() {
-  return (
-    <>
-      <div className="card"><div className="row"><span className="eyebrow">Recibos de sueldo</span><span className="chip warn">Etapa 2</span></div>
-        <div className="muted">Acá van a estar tus recibos firmados, con la conformidad desde la app.</div></div>
-      <div className="card"><div className="row"><span className="eyebrow">Tus certificados</span><span className="chip warn">Etapa 2</span></div>
-        <div className="muted">Licencia, psicofísico y cursos, con aviso antes de que venzan. Pedido de certificados y parte de enfermo con foto.</div></div>
-    </>
   );
 }
 

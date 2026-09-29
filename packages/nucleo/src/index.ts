@@ -4,3 +4,8 @@ export * from "./pin";
 export * from "./cola";
 export * from "./geo";
 export * from "./clasificar";
+export * from "./personal";
+export * from "./vueltas";
+export * from "./estadisticas";
+export * from "./paradas";
+export * from "./jornada";

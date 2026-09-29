@@ -12,6 +12,7 @@ const AREA_POR_TIPO: Record<TipoReporte, Area> = {
   choque: "siniestros",
   agresor: "seguridad",
   corte: "trafico",
+  calle: "trafico",
   otro: "trafico",
 };
 
@@ -21,6 +22,7 @@ const URGENCIA_POR_TIPO: Record<TipoReporte, Urgencia> = {
   choque: "alta",
   agresor: "alta",
   corte: "media",
+  calle: "baja",
   otro: "baja",
 };
 

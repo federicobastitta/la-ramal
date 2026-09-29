@@ -13,5 +13,23 @@ service firebase.storage {
       allow read: if request.auth != null && request.auth.token.linea == l;
       allow update, delete: if false;
     }
+
+    function de(l) { return request.auth != null && request.auth.token.linea == l; }
+    function gestion(l) { return de(l) && request.auth.token.rol in ['trafico', 'personal', 'admin']; }
+    function sueldos(l) { return de(l) && request.auth.token.rol in ['personal', 'admin']; }
+    function foto() { return request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('(image/.*|application/pdf)'); }
+
+    // Certificados y adjuntos de pedidos (foto del certificado médico): los sube el chofer.
+    match /lineas/{l}/{carpeta}/{uid}/{archivo} {
+      allow create: if carpeta in ['certificados', 'pedidos'] && de(l) && request.auth.uid == uid && request.auth.token.rol == 'chofer' && foto();
+      allow read: if carpeta in ['certificados', 'pedidos', 'respuestas'] && de(l) && (request.auth.uid == uid || gestion(l));
+      allow write: if carpeta == 'respuestas' && gestion(l) && request.resource.contentType == 'application/pdf';
+    }
+
+    // Recibos: los sube personal; los lee el chofer dueño y personal.
+    match /lineas/{l}/recibos/{uid}/{archivo} {
+      allow read: if de(l) && (request.auth.uid == uid || sueldos(l));
+      allow write: if sueldos(l) && request.resource.contentType == 'application/pdf' && request.resource.size < 10 * 1024 * 1024;
+    }
   }
 }

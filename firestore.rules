@@ -10,6 +10,10 @@ service cloud.firestore {
     function rol() { return request.auth.token.rol; }
     function empresa(l) { return deLinea(l) && rol() in ['trafico', 'taller', 'personal', 'admin']; }
     function chofer(l) { return deLinea(l) && rol() == 'chofer'; }
+    // Papeles de las personas (sueldos, salud): solo tráfico, personal y admin. El taller no.
+    function gestion(l) { return deLinea(l) && rol() in ['trafico', 'personal', 'admin']; }
+    function sueldos(l) { return deLinea(l) && rol() in ['personal', 'admin']; }
+    function propio() { return resource.data.choferId == request.auth.uid; }
     function nuevo() { return request.resource.data; }
     function cambia() { return request.resource.data.diff(resource.data).affectedKeys(); }
     function ubicacionValida(u) {
@@ -26,14 +30,14 @@ service cloud.firestore {
       match /reportes/{id} {
         // El chofer ve sus reportes y los cortes/choques/embotellamientos de su línea (para "Cortes en vivo").
         allow read: if empresa(l)
-          || (chofer(l) && (resource.data.choferId == request.auth.uid || resource.data.tipo in ['corte', 'embotellamiento', 'choque']));
+          || (chofer(l) && (resource.data.choferId == request.auth.uid || resource.data.tipo in ['corte', 'embotellamiento', 'choque', 'calle']));
 
         // Crear: solo el chofer, a su nombre, en su línea, recién recibido y sin clasificar (eso lo hace el servidor).
         allow create: if chofer(l)
           && nuevo().keys().hasOnly(['id', 'lineaId', 'cocheId', 'choferId', 'tipo', 'texto', 'ubicacion', 'creadoEn', 'adjuntos', 'estado', 'recibidoEn'])
           && nuevo().id == id && nuevo().lineaId == l && nuevo().choferId == request.auth.uid
           && nuevo().estado == 'recibido'
-          && nuevo().tipo in ['coche', 'embotellamiento', 'choque', 'agresor', 'corte', 'otro']
+          && nuevo().tipo in ['coche', 'embotellamiento', 'choque', 'agresor', 'corte', 'calle', 'otro']
           && nuevo().texto is string && nuevo().texto.size() <= 1000
           && nuevo().cocheId is string && nuevo().cocheId.size() > 0
           && nuevo().adjuntos is list && nuevo().adjuntos.size() <= 6
@@ -83,6 +87,91 @@ service cloud.firestore {
       match /auditoria/{doc} {
         allow read: if deLinea(l) && rol() == 'admin';
         allow write: if false;
+      }
+
+      // ---------------- Etapa 2: papeles y personal ----------------
+
+      // Planillas: las publica tráfico; el chofer ve las suyas. El intercambio por cambio de turno lo hace el servidor.
+      match /planillas/{id} {
+        allow read: if gestion(l) || (chofer(l) && propio());
+        allow create, update: if gestion(l) && nuevo().lineaId == l && nuevo().id == id;
+        allow delete: if false;
+      }
+
+      // Recibos: los sube personal. El chofer solo da la conformidad, atada al hash del PDF que está viendo.
+      match /recibos/{id} {
+        allow read: if sueldos(l) || (chofer(l) && propio());
+        allow create: if sueldos(l) && nuevo().lineaId == l && !('conformidad' in nuevo());
+        allow update: if (sueldos(l) && !cambia().hasAny(['conformidad', 'choferId']))
+          || (chofer(l) && propio() && cambia().hasOnly(['conformidad'])
+              && nuevo().conformidad.keys().hasOnly(['en', 'sha256'])
+              && nuevo().conformidad.sha256 == resource.data.sha256);
+        allow delete: if false;
+      }
+
+      // Certificados: los carga el chofer (pendientes); los valida gestión.
+      match /certificados/{id} {
+        allow read: if gestion(l) || (chofer(l) && propio());
+        allow create: if chofer(l) && nuevo().choferId == request.auth.uid && nuevo().lineaId == l && nuevo().id == id
+          && nuevo().estado == 'pendiente';
+        allow update: if gestion(l) && cambia().hasOnly(['estado', 'motivo']) && nuevo().estado in ['validado', 'rechazado'];
+        allow delete: if false;
+      }
+
+      // Pedidos, con la misma máquina de estados que transicionPedido del núcleo.
+      match /pedidos/{id} {
+        allow read: if gestion(l) || (chofer(l) && (propio()
+          || (resource.data.tipo == 'cambio_turno' && resource.data.estado == 'ofrecido')
+          || resource.data.get('tomadoPor', '') == request.auth.uid));
+
+        allow create: if chofer(l) && nuevo().choferId == request.auth.uid && nuevo().lineaId == l && nuevo().id == id
+          && !nuevo().keys().hasAny(['tomadoPor', 'tomadoPorNombre', 'respuesta', 'rutaRespuesta'])
+          && ((nuevo().tipo == 'cambio_turno' && nuevo().estado == 'ofrecido')
+              || (nuevo().tipo in ['certificado_trabajo', 'certificado_haberes', 'parte_enfermo', 'vacaciones'] && nuevo().estado == 'pendiente'));
+
+        allow update: if
+          // Un compañero lo toma.
+          (chofer(l) && !propio() && resource.data.tipo == 'cambio_turno' && resource.data.estado == 'ofrecido'
+            && nuevo().estado == 'tomado' && nuevo().tomadoPor == request.auth.uid
+            && cambia().hasOnly(['estado', 'tomadoPor', 'tomadoPorNombre', 'actualizadoEn']))
+          // El que lo tomó lo suelta.
+          || (chofer(l) && resource.data.get('tomadoPor', '') == request.auth.uid && resource.data.estado == 'tomado'
+            && nuevo().estado == 'ofrecido' && !nuevo().keys().hasAny(['tomadoPor', 'tomadoPorNombre'])
+            && cambia().hasOnly(['estado', 'tomadoPor', 'tomadoPorNombre', 'actualizadoEn']))
+          // Quien lo pidió lo cancela antes de la respuesta.
+          || (chofer(l) && propio() && resource.data.estado in ['pendiente', 'ofrecido', 'tomado']
+            && nuevo().estado == 'cancelado' && cambia().hasOnly(['estado', 'actualizadoEn']))
+          // Gestión responde. Un cambio de turno se aprueba solo si ya lo tomó un compañero.
+          || (gestion(l) && resource.data.estado in ['pendiente', 'ofrecido', 'tomado']
+            && nuevo().estado in ['aprobado', 'rechazado', 'entregado']
+            && !(resource.data.tipo == 'cambio_turno' && nuevo().estado == 'aprobado' && resource.data.estado != 'tomado')
+            && cambia().hasOnly(['estado', 'respuesta', 'rutaRespuesta', 'actualizadoEn']));
+        allow delete: if false;
+      }
+
+      // Avisos de la empresa: los lee toda la línea; el chofer solo se agrega a "leídos".
+      match /comunicados/{id} {
+        allow read: if deLinea(l);
+        allow create: if gestion(l) && nuevo().lineaId == l && nuevo().leidos.size() == 0;
+        allow update: if (gestion(l) && !cambia().hasAny(['leidos']))
+          || (deLinea(l) && cambia().hasOnly(['leidos'])
+              && nuevo().leidos.toSet().difference(resource.data.leidos.toSet()) == [request.auth.uid].toSet()
+              && resource.data.leidos.toSet().difference(nuevo().leidos.toSet()).size() == 0);
+        allow delete: if false;
+      }
+
+      // Resumen del día medido por el GPS: lo escribe el celular del chofer; lo lee él y gestión.
+      match /jornadas/{id} {
+        allow read: if gestion(l) || (chofer(l) && propio());
+        allow create, update: if chofer(l) && nuevo().choferId == request.auth.uid && nuevo().lineaId == l && nuevo().id == id
+          && id.matches(request.auth.uid + '-[0-9]{4}-[0-9]{2}-[0-9]{2}') && nuevo().vueltas.size() <= 30;
+        allow delete: if false;
+      }
+
+      // Recorrido de la línea (cabeceras, paradas, trazado): lo carga tráfico.
+      match /configuracion/{id} {
+        allow read: if deLinea(l);
+        allow write: if deLinea(l) && rol() in ['trafico', 'admin'];
       }
 
       // Canal del gremio: lo leen choferes y delegados; la empresa NO. Escribe solo el delegado.

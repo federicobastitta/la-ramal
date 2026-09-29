@@ -5,6 +5,8 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
+  deleteField,
   getFirestore,
   initializeFirestore,
   onSnapshot,
@@ -20,9 +22,12 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { AlertaPanico, Reporte, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
+import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
 import { ErrorPermanente } from "@la-ramal/nucleo";
-import type { ArchivoLocal, Fuente, Rol, Sesion } from "./fuente";
+import type { ArchivoLocal, Colecciones, Filtro, Fuente, NombreColeccion, Persona, Rol, Sesion } from "./fuente";
+import type { ZodType } from "zod";
+
+const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido } as never;
 
 /**
  * Fuente real: Firestore (con caché local persistente, así la app abre y muestra datos sin señal),
@@ -114,7 +119,7 @@ export class FuenteFirebase implements Fuente {
       cb([...m.values()].sort((a, b) => b.creadoEn - a.creadoEn));
     };
     const a = onSnapshot(query(col, where("choferId", "==", uid), orderBy("creadoEn", "desc"), limit(50)), (s) => ((mios = leer(s.docs)), unir()));
-    const b = onSnapshot(query(col, where("tipo", "in", ["corte", "embotellamiento", "choque"]), where("creadoEn", ">", Date.now() - 3 * 3_600_000), orderBy("creadoEn", "desc"), limit(100)), (s) => ((calle = leer(s.docs)), unir()));
+    const b = onSnapshot(query(col, where("tipo", "in", ["corte", "embotellamiento", "choque", "calle"]), where("creadoEn", ">", Date.now() - 3 * 3_600_000), orderBy("creadoEn", "desc"), limit(100)), (s) => ((calle = leer(s.docs)), unir()));
     return () => (a(), b());
   }
 
@@ -164,5 +169,46 @@ export class FuenteFirebase implements Fuente {
   async cancelarPanico(lineaId: string, id: string, pin: string) {
     const cancelar = httpsCallable<{ lineaId: string; id: string; pin: string }, { resultado: "cerrada" | "pin_incorrecto" }>(this.functions, "cancelarPanico");
     return (await cancelar({ lineaId, id, pin })).data.resultado;
+  }
+
+  // ---- Etapa 2 ----
+  async personas(lineaId: string): Promise<Persona[]> {
+    const snap = await getDocs(collection(this.db, "lineas", lineaId, "personas"));
+    return snap.docs.map((d) => ({ uid: d.id, nombre: String(d.get("nombre") ?? ""), rol: d.get("rol") as Rol }));
+  }
+
+  escuchar<K extends NombreColeccion>(lineaId: string, col: K, filtros: Filtro[], cb: (xs: Colecciones[K][]) => void) {
+    const q = query(collection(this.db, "lineas", lineaId, col), ...filtros.map((f) => where(f.campo, "==", f.igual)), limit(300));
+    return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ESQUEMAS[col].safeParse(d.data())).flatMap((p) => (p.success ? [p.data] : []))));
+  }
+
+  async crear<K extends NombreColeccion>(lineaId: string, col: K, d: Colecciones[K]) {
+    await setDoc(doc(this.db, "lineas", lineaId, col, (d as { id: string }).id), d as Record<string, unknown>);
+  }
+
+  async guardarJornada(j: Jornada) {
+    await setDoc(doc(this.db, "lineas", j.lineaId, "jornadas", j.id), j);
+  }
+
+  async actualizar<K extends NombreColeccion>(lineaId: string, col: K, id: string, cambios: Partial<Colecciones[K]>) {
+    await updateDoc(doc(this.db, "lineas", lineaId, col, id), cambios as Record<string, unknown>);
+  }
+
+  async subirArchivo(ruta: string, blob: Blob) {
+    await uploadBytes(ref(this.storage, ruta), blob, { contentType: blob.type });
+  }
+
+  async accionPedido(lineaId: string, p: Pedido, quien: Sesion, accion: AccionPedido, extra: { respuesta?: string; rutaRespuesta?: string } = {}) {
+    const t = transicionPedido(p, { uid: quien.uid, rol: quien.rol }, accion);
+    if (!t.ok) throw new Error(t.motivo);
+    const cambios: Record<string, unknown> = { estado: t.estado, actualizadoEn: Date.now(), ...extra };
+    if (accion === "tomar") Object.assign(cambios, { tomadoPor: quien.uid, tomadoPorNombre: quien.nombre });
+    if (accion === "soltar") Object.assign(cambios, { tomadoPor: deleteField(), tomadoPorNombre: deleteField() });
+    // El intercambio de planillas al aprobar un cambio de turno lo hace la función alAprobarCambioDeTurno.
+    await updateDoc(doc(this.db, "lineas", lineaId, "pedidos", p.id), cambios);
+  }
+
+  async marcarLeido(lineaId: string, id: string, uid: string) {
+    await updateDoc(doc(this.db, "lineas", lineaId, "comunicados", id), { leidos: arrayUnion(uid) });
   }
 }

@@ -21,7 +21,7 @@ export const RespuestaIA = z.object({
 export type RespuestaIA = z.infer<typeof RespuestaIA>;
 
 export const INSTRUCCIONES = `Clasificás reportes que mandan choferes de colectivo desde la calle a su línea (empresa de transporte del AMBA).
-Áreas: taller (desperfectos del coche), trafico (cortes, embotellamientos, desvíos, otros), siniestros (choques, lesionados, daños a terceros), seguridad (agresiones, robos, amenazas).
+Áreas: taller (averías del coche), trafico (cortes, embotellamientos, desvíos, calles y semáforos en mal estado, otros), siniestros (choques, lesionados, daños a terceros), seguridad (agresiones, robos, amenazas).
 Urgencia:
 - alta: hay riesgo para personas ahora (heridos, agresor presente, frenos o dirección que fallan, humo o fuego, puertas que no cierran con pasajeros).
 - media: afecta el servicio o el coche debería revisarse hoy.

@@ -1,0 +1,327 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, conformidadVigente, exigenciaPorRecorrido, leerVueltas, nivelVencimiento, sha256Hex,
+  type Certificado, type Comunicado, type Jornada, type Pedido, type Planilla, type Recibo,
+} from "@la-ramal/nucleo";
+import type { Fuente, Sesion } from "../datos";
+import type { Persona } from "../datos/fuente";
+import { fechaLinda, hoyISO, pdfSimple, sumarDias } from "../compartido/pdf";
+
+type P = { fuente: Fuente; sesion: Sesion; avisar: (s: string) => void };
+
+function useColeccion<K extends "planillas" | "recibos" | "certificados" | "pedidos" | "comunicados" | "jornadas">(p: P, col: K) {
+  const [xs, setXs] = useState<import("../datos/fuente").Colecciones[K][]>([]);
+  useEffect(() => p.fuente.escuchar(p.sesion.lineaId, col, [], setXs), [p.fuente, p.sesion, col]);
+  return xs;
+}
+
+function usePersonas(p: P) {
+  const [xs, setXs] = useState<Persona[]>([]);
+  useEffect(() => void p.fuente.personas(p.sesion.lineaId).then((ps) => setXs(ps.filter((x) => x.rol === "chofer"))), [p.fuente, p.sesion]);
+  return xs;
+}
+
+const abrirArchivo = async (fuente: Fuente, ruta: string) => {
+  const u = await fuente.urlAdjunto(ruta);
+  if (u) window.open(u, "_blank", "noopener");
+};
+
+// ---------------------------------------------------------------------------------------------
+export function Personal(p: P) {
+  const pedidos = useColeccion(p, "pedidos");
+  const certificados = useColeccion(p, "certificados");
+  const recibos = useColeccion(p, "recibos");
+  const choferes = usePersonas(p);
+  const [respuesta, setRespuesta] = useState<Record<string, string>>({});
+  const abiertos = pedidos.filter((x) => ["pendiente", "tomado"].includes(x.estado)).sort((a, b) => a.creadoEn - b.creadoEn);
+  const sinValidar = certificados.filter((c) => c.estado === "pendiente");
+  const hoy = hoyISO();
+  const porVencer = certificados.filter((c) => c.estado === "validado" && nivelVencimiento(c.vence, hoy) !== "al_dia").sort((a, b) => a.vence.localeCompare(b.vence));
+  const nombre = (uid: string) => choferes.find((c) => c.uid === uid)?.nombre ?? uid;
+
+  const accion = async (x: Pedido, a: "aprobar" | "rechazar" | "entregar") => {
+    let rutaRespuesta: string | undefined;
+    if (a === "entregar") {
+      // El certificado se arma solo con los datos del legajo.
+      const pdf = pdfSimple(NOMBRE_PEDIDO[x.tipo], [
+        `Se certifica que ${x.choferNombre} trabaja en ${p.sesion.lineaNombre} como conductor.`,
+        `Emitido el ${new Date().toLocaleDateString("es-AR")} a pedido del interesado.`,
+        "",
+        p.fuente.modo === "demo" ? "Documento de ejemplo generado por la demo de LA RAMAL." : "Firma y sello de la empresa.",
+      ]);
+      rutaRespuesta = `lineas/${p.sesion.lineaId}/respuestas/${x.choferId}/${x.id}.pdf`;
+      await p.fuente.subirArchivo(rutaRespuesta, pdf);
+    }
+    await p.fuente
+      .accionPedido(p.sesion.lineaId, x, p.sesion, a, { ...(respuesta[x.id] ? { respuesta: respuesta[x.id] } : {}), ...(rutaRespuesta ? { rutaRespuesta } : {}) })
+      .then(() => p.avisar(a === "aprobar" && x.tipo === "cambio_turno" ? "Aprobado: las planillas se intercambiaron" : "Listo: el chofer ya lo ve"))
+      .catch((e: Error) => p.avisar(e.message));
+  };
+
+  return (
+    <div className="panel">
+      <div className="col">
+        <div className="card">
+          <h3>Pedidos para responder ({abiertos.length})</h3>
+          {abiertos.length === 0 ? <div className="muted">No hay pedidos pendientes.</div> : (
+            <div className="list">
+              {abiertos.map((x) => (
+                <div className="it" key={x.id} style={{ display: "block" }}>
+                  <div className="row"><b>{NOMBRE_PEDIDO[x.tipo]} · {x.choferNombre}</b><span className="muted">{new Date(x.creadoEn).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></div>
+                  {x.tipo === "cambio_turno" && <div>{x.fecha && fechaLinda(x.fecha)}: lo toma <b>{x.tomadoPorNombre}</b>. Al aprobar, se intercambian las planillas de ese día.</div>}
+                  {x.tipo === "vacaciones" && x.desde && x.hasta && <div>Del {fechaLinda(x.desde)} al {fechaLinda(x.hasta)}</div>}
+                  {x.detalle && <div className="muted">{x.detalle}</div>}
+                  {x.adjuntos.map((r) => <button key={r} className="btn alt" style={{ marginTop: 4 }} onClick={() => abrirArchivo(p.fuente, r)}>Ver foto</button>)}
+                  <input type="text" aria-label="Respuesta al chofer" placeholder="Respuesta (opcional)" value={respuesta[x.id] ?? ""} onChange={(e) => setRespuesta((r) => ({ ...r, [x.id]: e.target.value }))} style={{ marginTop: 6 }} />
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    {x.tipo === "certificado_trabajo" || x.tipo === "certificado_haberes" ? (
+                      <button className="btn" onClick={() => accion(x, "entregar")}>Generar y entregar PDF</button>
+                    ) : (
+                      <button className="btn" onClick={() => accion(x, "aprobar")}>Aprobar</button>
+                    )}
+                    <button className="btn alt" onClick={() => accion(x, "rechazar")}>Rechazar</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <SubirRecibo {...p} choferes={choferes} recibos={recibos} />
+      </div>
+      <div className="col">
+        <div className="card">
+          <h3>Certificados para validar ({sinValidar.length})</h3>
+          {sinValidar.length === 0 ? <div className="muted">Nada para validar.</div> : sinValidar.map((c) => <CertificadoFila key={c.id} c={c} nombre={nombre(c.choferId)} {...p} />)}
+        </div>
+        <div className="card">
+          <h3>Vencen pronto</h3>
+          {porVencer.length === 0 ? <div className="muted">Ningún certificado vence en los próximos 30 días.</div> : (
+            <div className="list">
+              {porVencer.map((c) => (
+                <div className="it" key={c.id}>
+                  <div style={{ flex: 1 }}><b>{nombre(c.choferId)}</b><div className="muted">{NOMBRE_CERTIFICADO[c.tipo]} · {fechaLinda(c.vence)}</div></div>
+                  <span className={`chip ${nivelVencimiento(c.vence, hoy) === "pronto" ? "warn" : "bad"}`}>{nivelVencimiento(c.vence, hoy) === "vencido" ? "Vencido" : "Pronto"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="card">
+          <h3>Recibos sin conformidad</h3>
+          {recibos.filter((r) => !conformidadVigente(r)).map((r) => <div key={r.id} className="muted">{nombre(r.choferId)} · {r.periodo}</div>)}
+          {recibos.every(conformidadVigente) && <div className="muted">Todos los recibos tienen conformidad.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CertificadoFila(p: P & { c: Certificado; nombre: string }) {
+  const [motivo, setMotivo] = useState("");
+  return (
+    <div className="it" style={{ display: "block" }}>
+      <div className="row"><b>{p.nombre}</b><span className="muted">{NOMBRE_CERTIFICADO[p.c.tipo]} · vence {fechaLinda(p.c.vence)}</span></div>
+      <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+        {p.c.ruta && <button className="btn alt" onClick={() => abrirArchivo(p.fuente, p.c.ruta)}>Ver</button>}
+        <button className="btn" onClick={() => p.fuente.actualizar(p.sesion.lineaId, "certificados", p.c.id, { estado: "validado" }).then(() => p.avisar("Validado"))}>Validar</button>
+        <input type="text" aria-label="Motivo del rechazo" placeholder="Motivo si se rechaza" value={motivo} onChange={(e) => setMotivo(e.target.value)} style={{ flex: 1, minWidth: 120 }} />
+        <button className="btn alt" onClick={() => motivo && p.fuente.actualizar(p.sesion.lineaId, "certificados", p.c.id, { estado: "rechazado", motivo }).then(() => p.avisar("Rechazado"))}>Rechazar</button>
+      </div>
+    </div>
+  );
+}
+
+function SubirRecibo(p: P & { choferes: Persona[]; recibos: Recibo[] }) {
+  const [chofer, setChofer] = useState("");
+  const [periodo, setPeriodo] = useState("");
+  const [neto, setNeto] = useState("");
+  const [pdf, setPdf] = useState<File | null>(null);
+  const subir = async () => {
+    const n = Number(neto.replace(/\./g, "").replace(",", "."));
+    if (!chofer || !/^\d{4}-\d{2}$/.test(periodo) || !pdf || !(n > 0)) return p.avisar("Completá chofer, período, neto y el PDF");
+    const ruta = `lineas/${p.sesion.lineaId}/recibos/${chofer}/${periodo}.pdf`;
+    await p.fuente.subirArchivo(ruta, pdf);
+    const id = `${chofer}-${periodo}`;
+    const r: Recibo = { id, lineaId: p.sesion.lineaId, choferId: chofer, periodo, neto: n, ruta, sha256: await sha256Hex(await pdf.arrayBuffer()), subidoEn: Date.now() };
+    const existe = p.recibos.find((x) => x.id === id);
+    // Si se reemplaza el PDF, cambia el hash: la conformidad anterior deja de valer y el chofer la vuelve a dar.
+    if (existe) await p.fuente.actualizar(p.sesion.lineaId, "recibos", id, { ruta, sha256: r.sha256, neto: n, subidoEn: r.subidoEn });
+    else await p.fuente.crear(p.sesion.lineaId, "recibos", r);
+    setPdf(null);
+    p.avisar("Recibo subido: el chofer lo ve y da la conformidad");
+  };
+  return (
+    <div className="card">
+      <h3>Subir un recibo</h3>
+      <label className="f" htmlFor="r-chofer">Chofer
+        <select id="r-chofer" value={chofer} onChange={(e) => setChofer(e.target.value)}>
+          <option value="">Elegí</option>
+          {p.choferes.map((c) => <option key={c.uid} value={c.uid}>{c.nombre}</option>)}
+        </select>
+      </label>
+      <div className="grid2">
+        <label className="f" htmlFor="r-periodo">Período<input id="r-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} /></label>
+        <label className="f" htmlFor="r-neto">Neto ($)<input id="r-neto" type="text" inputMode="decimal" value={neto} onChange={(e) => setNeto(e.target.value)} /></label>
+      </div>
+      <label className="f" htmlFor="r-pdf">PDF del recibo<input id="r-pdf" type="file" accept="application/pdf" onChange={(e) => setPdf(e.target.files?.[0] ?? null)} /></label>
+      <button className="btn yellow" onClick={subir}>Subir</button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+export function Planillas(p: P) {
+  const choferes = usePersonas(p);
+  const planillas = useColeccion(p, "planillas");
+  const [fecha, setFecha] = useState(sumarDias(hoyISO(), 1));
+  const [chofer, setChofer] = useState("");
+  const [coche, setCoche] = useState("");
+  const [cabecera, setCabecera] = useState("Terminal Quilmes Oeste");
+  const [ramal, setRamal] = useState("A");
+  const [texto, setTexto] = useState("05:10-06:52\n07:05-08:50\n09:05-10:47\n11:00-12:45");
+  const [franco, setFranco] = useState(false);
+  const leidas = useMemo(() => leerVueltas(texto), [texto]);
+  const delDia = planillas.filter((x) => x.fecha === fecha).sort((a, b) => a.choferNombre.localeCompare(b.choferNombre));
+
+  const publicar = async () => {
+    const c = choferes.find((x) => x.uid === chofer);
+    if (!c || (!franco && (!coche || leidas.vueltas.length === 0 || leidas.errores.length))) return p.avisar("Revisá chofer, coche y vueltas");
+    const pl: Planilla = {
+      id: `${c.uid}-${fecha}`, lineaId: p.sesion.lineaId, choferId: c.uid, choferNombre: c.nombre, fecha, cocheId: coche || "-", cabecera, ramal,
+      vueltas: franco ? [{ sale: "00:00", llega: "00:00" }] : leidas.vueltas, franco, publicadaEn: Date.now(),
+    };
+    const existe = planillas.some((x) => x.id === pl.id);
+    if (existe) await p.fuente.actualizar(p.sesion.lineaId, "planillas", pl.id, pl);
+    else await p.fuente.crear(p.sesion.lineaId, "planillas", pl);
+    p.avisar(`Planilla publicada: ${c.nombre} la ve en su celular`);
+  };
+
+  return (
+    <div className="panel">
+      <div className="col">
+        <div className="card">
+          <h3>Cargar planilla</h3>
+          <div className="grid2">
+            <label className="f" htmlFor="pl-fecha">Día<input id="pl-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
+            <label className="f" htmlFor="pl-chofer">Chofer
+              <select id="pl-chofer" value={chofer} onChange={(e) => setChofer(e.target.value)}>
+                <option value="">Elegí</option>
+                {choferes.map((c) => <option key={c.uid} value={c.uid}>{c.nombre}</option>)}
+              </select>
+            </label>
+            <label className="f" htmlFor="pl-coche">Coche<input id="pl-coche" type="text" placeholder="Interno 23" value={coche} onChange={(e) => setCoche(e.target.value)} /></label>
+            <label className="f" htmlFor="pl-ramal">Ramal<input id="pl-ramal" type="text" value={ramal} onChange={(e) => setRamal(e.target.value)} /></label>
+          </div>
+          <label className="f" htmlFor="pl-cabecera">Cabecera<input id="pl-cabecera" type="text" value={cabecera} onChange={(e) => setCabecera(e.target.value)} /></label>
+          <label className="f" style={{ flexDirection: "row", alignItems: "center", gap: 8 }} htmlFor="pl-franco"><input id="pl-franco" type="checkbox" checked={franco} onChange={(e) => setFranco(e.target.checked)} /> Franco</label>
+          {!franco && (
+            <label className="f" htmlFor="pl-vueltas">Vueltas (una por renglón, se puede pegar desde el Excel)
+              <textarea id="pl-vueltas" rows={5} value={texto} onChange={(e) => setTexto(e.target.value)} style={{ fontVariantNumeric: "tabular-nums" }} />
+            </label>
+          )}
+          {!franco && <div className={leidas.errores.length ? "chip bad" : "chip ok"} style={{ alignSelf: "flex-start" }}>{leidas.errores.length ? leidas.errores[0] : `${leidas.vueltas.length} vueltas leídas`}</div>}
+          <button className="btn yellow" onClick={publicar}>Publicar planilla</button>
+        </div>
+      </div>
+      <div className="col">
+        <div className="card">
+          <h3>Planillas del {fechaLinda(fecha)}</h3>
+          {delDia.length === 0 ? <div className="muted">No hay planillas cargadas ese día.</div> : (
+            <div className="list">
+              {delDia.map((x) => (
+                <div className="it" key={x.id}>
+                  <div style={{ flex: 1 }}><b>{x.choferNombre}</b><div className="muted">{x.franco ? "Franco" : `${x.cocheId} · ${x.vueltas[0]?.sale}–${x.vueltas.at(-1)?.llega} · ${x.vueltas.length} vueltas`}</div></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+export function Avisos(p: P) {
+  const comunicados = useColeccion(p, "comunicados");
+  const choferes = usePersonas(p);
+  const [titulo, setTitulo] = useState("");
+  const [texto, setTexto] = useState("");
+  const [importante, setImportante] = useState(false);
+  const publicar = async () => {
+    if (!titulo.trim() || !texto.trim()) return p.avisar("Poné título y texto");
+    const c: Comunicado = { id: crypto.randomUUID(), lineaId: p.sesion.lineaId, titulo: titulo.trim(), texto: texto.trim(), importante, creadoEn: Date.now(), leidos: [] };
+    await p.fuente.crear(p.sesion.lineaId, "comunicados", c);
+    setTitulo("");
+    setTexto("");
+    p.avisar("Aviso publicado a todos los choferes");
+  };
+  return (
+    <div className="panel">
+      <div className="col">
+        <div className="card">
+          <h3>Nuevo aviso</h3>
+          <label className="f" htmlFor="a-titulo">Título<input id="a-titulo" type="text" maxLength={120} value={titulo} onChange={(e) => setTitulo(e.target.value)} /></label>
+          <label className="f" htmlFor="a-texto">Texto<textarea id="a-texto" rows={4} maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
+          <label className="f" style={{ flexDirection: "row", alignItems: "center", gap: 8 }} htmlFor="a-imp"><input id="a-imp" type="checkbox" checked={importante} onChange={(e) => setImportante(e.target.checked)} /> Importante</label>
+          <button className="btn yellow" onClick={publicar}>Publicar</button>
+        </div>
+      </div>
+      <div className="col">
+        <div className="card">
+          <h3>Avisos publicados</h3>
+          {comunicados.sort((a, b) => b.creadoEn - a.creadoEn).map((c) => {
+            const faltan = choferes.filter((x) => !c.leidos.includes(x.uid));
+            return (
+              <div className="it" key={c.id} style={{ display: "block" }}>
+                <div className="row"><b>{c.titulo}</b><span className={`chip ${faltan.length ? "warn" : "ok"}`}>Leído por {c.leidos.length} de {choferes.length}</span></div>
+                {faltan.length > 0 && <div className="muted">Falta: {faltan.map((x) => x.nombre).join(", ")}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+export function Recorridos(p: P) {
+  const jornadas = useColeccion(p, "jornadas") as Jornada[];
+  const filas = useMemo(
+    () => exigenciaPorRecorrido(jornadas.flatMap((j) => j.vueltas.map((v) => ({ recorrido: `Ramal ${j.ramal || "?"} · ${v.desde} → ${v.hasta}`, sale: v.sale, duracionMin: (v.llega - v.sale) / 60_000, puntos: v.puntos })))),
+    [jornadas],
+  );
+  const ejemplo = jornadas.some((j) => j.ejemplo);
+  const max = Math.max(0, ...filas.map((f) => f.puntosPorHora));
+  return (
+    <div className="panel" style={{ gridTemplateColumns: "minmax(0,1fr)" }}>
+      <div className="card">
+        <div className="row"><h3>Índice de exigencia por recorrido y franja horaria</h3>{ejemplo && <span className="chip warn">Datos de ejemplo</span>}</div>
+        <div className="muted">Medido solo por el GPS de los choferes. Puntos por hora manejada: 1 por parada, 0,5 por minuto trabado en el tránsito, 0,5 por km y 5 por vuelta en hora pico. Con menos de 5 vueltas no se informa.</div>
+        {filas.length === 0 ? <div className="muted">Todavía no hay vueltas medidas.</div> : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
+              <thead><tr style={{ textAlign: "left" }}><th style={{ padding: 6 }}>Recorrido</th><th style={{ padding: 6 }}>Franja</th><th style={{ padding: 6 }}>Vueltas</th><th style={{ padding: 6 }}>Puntos por hora</th><th style={{ padding: 6 }}>Contra el promedio</th></tr></thead>
+              <tbody>
+                {filas.map((f) => (
+                  <tr key={f.recorrido + f.franja} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td style={{ padding: 6 }}>{f.recorrido}</td>
+                    <td style={{ padding: 6, textTransform: "capitalize" }}>{f.franja}</td>
+                    <td style={{ padding: 6 }}>{f.vueltas}</td>
+                    <td style={{ padding: 6, minWidth: 160 }}>
+                      <span style={{ display: "inline-block", width: `${Math.round((f.puntosPorHora / max) * 100)}px`, height: 10, background: "var(--coral)", borderRadius: 4, marginRight: 6 }} />
+                      {f.puntosPorHora}
+                    </td>
+                    <td style={{ padding: 6 }}><span className={`chip ${f.contraPromedioPct > 10 ? "bad" : f.contraPromedioPct < -10 ? "ok" : "warn"}`}>{f.contraPromedioPct > 0 ? "+" : ""}{f.contraPromedioPct} %</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+

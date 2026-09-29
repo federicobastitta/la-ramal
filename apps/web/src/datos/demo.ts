@@ -1,7 +1,8 @@
-import { hashearPin, verificarPin, type AlertaPanico, type EstadoReporte, type HashPin, type NuevoReporte, type Reporte, type Ubicacion } from "@la-ramal/nucleo";
+import { hashearPin, intercambiarPlanillas, transicionPedido, verificarPin, type AccionPedido, type AlertaPanico, type Comunicado, type EstadoReporte, type HashPin, type Jornada, type NuevoReporte, type Pedido, type Planilla, type Reporte, type Ubicacion } from "@la-ramal/nucleo";
 import { clasificarPorReglas } from "@la-ramal/nucleo";
-import { idb } from "./idb";
-import type { ArchivoLocal, Fuente, Sesion } from "./fuente";
+import { abrir, idb } from "./idb";
+import type { ArchivoLocal, Colecciones, Filtro, Fuente, NombreColeccion, Persona, Sesion } from "./fuente";
+import { CHOFERES_DEMO, sembrarDemo, sembrarRecorridoDemo } from "./semilla-demo";
 
 /**
  * Modo demo: hace de "servidor" dentro del navegador.
@@ -31,13 +32,17 @@ export class FuenteDemo implements Fuente {
     this.canal?.postMessage("cambio");
     this.avisarLocal();
   }
-  private escuchar(fn: () => void): () => void {
+  private escuchar_(fn: () => void): () => void {
     this.oyentes.add(fn);
     fn();
     return () => this.oyentes.delete(fn);
   }
 
+  private semilla: Promise<void> | null = null;
+
   async sesion() {
+    this.semilla ??= sembrarDemo().then(sembrarRecorridoDemo).then(() => this.avisar());
+    await this.semilla;
     return this.quien;
   }
 
@@ -50,7 +55,7 @@ export class FuenteDemo implements Fuente {
   }
 
   escucharReportes(lineaId: string, cb: (rs: Reporte[]) => void) {
-    return this.escuchar(() => {
+    return this.escuchar_(() => {
       void idb.todos<Reporte>("reportes").then((rs) => cb(rs.filter((r) => r.lineaId === lineaId).sort((a, b) => b.creadoEn - a.creadoEn)));
     });
   }
@@ -81,13 +86,13 @@ export class FuenteDemo implements Fuente {
   }
 
   escucharPanicos(lineaId: string, cb: (as: AlertaPanico[]) => void) {
-    return this.escuchar(() => {
+    return this.escuchar_(() => {
       void idb.todos<AlertaPanico>("panicos").then((as) => cb(as.filter((a) => a.lineaId === lineaId && a.estado !== "cerrada")));
     });
   }
 
   escucharMiPanico(_lineaId: string, id: string, cb: (a: AlertaPanico | null) => void) {
-    return this.escuchar(() => {
+    return this.escuchar_(() => {
       void idb.leer<AlertaPanico>("panicos", id).then((a) => cb(a && a.estado !== "cerrada" && !a.coaccion ? a : null));
     });
   }
@@ -113,6 +118,80 @@ export class FuenteDemo implements Fuente {
     }
     this.avisar();
     return "cerrada";
+  }
+
+  // ---- Etapa 2 ----
+  async personas(): Promise<Persona[]> {
+    return [...CHOFERES_DEMO.map((c) => ({ uid: c.uid, nombre: c.nombre, rol: "chofer" as const })), { uid: "demo-trafico", nombre: "Tráfico (ejemplo)", rol: "trafico" }];
+  }
+
+  private async todos<K extends NombreColeccion>(col: K): Promise<Colecciones[K][]> {
+    const prefijo = `${col}/`;
+    const db = await abrir();
+    return new Promise((ok, mal) => {
+      const t = db.transaction("docs", "readonly");
+      const pedido = t.objectStore("docs").getAll(IDBKeyRange.bound(prefijo, prefijo + "\uffff"));
+      pedido.onsuccess = () => ok(pedido.result as Colecciones[K][]);
+      pedido.onerror = () => mal(pedido.error);
+    });
+  }
+
+  escuchar<K extends NombreColeccion>(lineaId: string, col: K, filtros: Filtro[], cb: (xs: Colecciones[K][]) => void) {
+    return this.escuchar_(() => {
+      void this.todos(col).then((xs) =>
+        cb(xs.filter((x) => (x as { lineaId: string }).lineaId === lineaId && filtros.every((f) => (x as Record<string, unknown>)[f.campo] === f.igual))),
+      );
+    });
+  }
+
+  async crear<K extends NombreColeccion>(_lineaId: string, col: K, doc: Colecciones[K]) {
+    const clave = `${col}/${(doc as { id: string }).id}`;
+    if (await idb.leer("docs", clave)) return;
+    await idb.poner("docs", clave, doc);
+    this.avisar();
+  }
+
+  async actualizar<K extends NombreColeccion>(_lineaId: string, col: K, id: string, cambios: Partial<Colecciones[K]>) {
+    const clave = `${col}/${id}`;
+    const actual = await idb.leer<Colecciones[K]>("docs", clave);
+    if (!actual) return;
+    await idb.poner("docs", clave, { ...actual, ...cambios });
+    this.avisar();
+  }
+
+  async subirArchivo(ruta: string, blob: Blob) {
+    await idb.poner("archivos", ruta, blob);
+  }
+
+  async accionPedido(lineaId: string, p: Pedido, quien: Sesion, accion: AccionPedido, extra: { respuesta?: string; rutaRespuesta?: string } = {}) {
+    const t = transicionPedido(p, { uid: quien.uid, rol: quien.rol }, accion);
+    if (!t.ok) throw new Error(t.motivo);
+    const cambios: Partial<Pedido> = { estado: t.estado, actualizadoEn: Date.now(), ...extra };
+    if (accion === "tomar") Object.assign(cambios, { tomadoPor: quien.uid, tomadoPorNombre: quien.nombre });
+    if (accion === "soltar") Object.assign(cambios, { tomadoPor: undefined, tomadoPorNombre: undefined });
+    // En Firebase esto lo hace la función alAprobarCambioDeTurno; en la demo, acá mismo.
+    if (accion === "aprobar" && p.tipo === "cambio_turno" && p.fecha && p.tomadoPor) {
+      const a = await idb.leer<Planilla>("docs", `planillas/${p.choferId}-${p.fecha}`);
+      const b = await idb.leer<Planilla>("docs", `planillas/${p.tomadoPor}-${p.fecha}`);
+      if (a && b) {
+        const [na, nb] = intercambiarPlanillas(a, b);
+        await idb.poner("docs", `planillas/${na.id}`, na);
+        await idb.poner("docs", `planillas/${nb.id}`, nb);
+      }
+    }
+    await this.actualizar(lineaId, "pedidos", p.id, cambios);
+  }
+
+  async guardarJornada(j: Jornada) {
+    await idb.poner("docs", `jornadas/${j.id}`, j);
+    this.avisar();
+  }
+
+  async marcarLeido(_lineaId: string, id: string, uid: string) {
+    const c = await idb.leer<Comunicado>("docs", `comunicados/${id}`);
+    if (!c || c.leidos.includes(uid)) return;
+    await idb.poner("docs", `comunicados/${id}`, { ...c, leidos: [...c.leidos, uid] });
+    this.avisar();
   }
 }
 

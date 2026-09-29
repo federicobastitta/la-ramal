@@ -1,10 +1,10 @@
 /** Envoltorio mínimo sobre IndexedDB con promesas (sin dependencias). */
-export const TIENDAS = ["reportes", "panicos", "archivos", "cola"] as const;
+export const TIENDAS = ["reportes", "panicos", "archivos", "cola", "docs", "pings"] as const;
 export type Tienda = (typeof TIENDAS)[number];
 
 let abierta: Promise<IDBDatabase> | null = null;
 
-export function abrir(nombre = "la-ramal", version = 1): Promise<IDBDatabase> {
+export function abrir(nombre = "la-ramal", version = 3): Promise<IDBDatabase> {
   abierta ??= new Promise((ok, mal) => {
     const pedido = indexedDB.open(nombre, version);
     pedido.onupgradeneeded = () => {

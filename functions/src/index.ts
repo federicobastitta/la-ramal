@@ -5,11 +5,12 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { getStorage } from "firebase-admin/storage";
 import { logger, setGlobalOptions } from "firebase-functions/v2";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { z } from "zod";
-import { AlertaPanico, NuevoReporte, clasificarPorReglas, hashearPin, pinValido, unirClasificacion, verificarPin, type HashPin } from "@la-ramal/nucleo";
+import { AlertaPanico, Certificado, NOMBRE_CERTIFICADO, NuevoReporte, Pedido, Planilla, clasificarPorReglas, diasParaVencer, hashearPin, intercambiarPlanillas, pinValido, tocaAvisar, unirClasificacion, verificarPin, type HashPin } from "@la-ramal/nucleo";
 import { MODELO_POR_DEFECTO, clasificarConIA } from "./clasificar-ia";
 
 initializeApp();
@@ -191,4 +192,58 @@ export const altaDePersona = onCall(async (req) => {
   );
   await auditar(lineaId, "alta_persona", { persona: usuario.uid, rol: p.data.rol, por: req.auth?.uid });
   return { uid: usuario.uid };
+});
+
+// ---------------------------------------------------------------------------------------------
+// Etapa 2: al aprobarse un cambio de turno, se intercambian las planillas de ese día (en una transacción).
+// ---------------------------------------------------------------------------------------------
+export const alAprobarCambioDeTurno = onDocumentUpdated({ document: "lineas/{lineaId}/pedidos/{id}" }, async (ev) => {
+  const antes = Pedido.safeParse(ev.data?.before.data());
+  const despues = Pedido.safeParse(ev.data?.after.data());
+  if (!antes.success || !despues.success) return;
+  const p = despues.data;
+  if (p.tipo !== "cambio_turno" || antes.data.estado === "aprobado" || p.estado !== "aprobado" || !p.fecha || !p.tomadoPor) return;
+  const col = db().collection("lineas").doc(p.lineaId).collection("planillas");
+  await db().runTransaction(async (tx) => {
+    const refA = col.doc(`${p.choferId}-${p.fecha}`);
+    const refB = col.doc(`${p.tomadoPor}-${p.fecha}`);
+    const [a, b] = await Promise.all([tx.get(refA), tx.get(refB)]);
+    const pa = Planilla.safeParse(a.data());
+    const pb = Planilla.safeParse(b.data());
+    if (!pa.success || !pb.success) {
+      tx.update(ev.data!.after.ref, { respuesta: "Aprobado, pero falta una de las dos planillas de ese día: tráfico tiene que cargarla a mano." });
+      return;
+    }
+    const [na, nb] = intercambiarPlanillas(pa.data, pb.data);
+    tx.set(refA, na);
+    tx.set(refB, nb);
+  });
+  await auditar(p.lineaId, "cambio_turno_aprobado", { pedido: p.id, de: p.choferId, a: p.tomadoPor, fecha: p.fecha });
+  await Promise.all(
+    [p.choferId, p.tomadoPor].map((uid) =>
+      getMessaging().send({ topic: `chofer-${uid}`, notification: { title: "Cambio de turno aprobado", body: `Tu planilla del ${p.fecha} ya está actualizada.` } }).catch(() => undefined),
+    ),
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// Todos los días a las 8 (hora argentina): aviso a cada chofer de lo que vence a 30, 15, 7, 1 y 0 días.
+// ---------------------------------------------------------------------------------------------
+export const avisoDeVencimientos = onSchedule({ schedule: "0 8 * * *", timeZone: "America/Argentina/Buenos_Aires" }, async () => {
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }); // AAAA-MM-DD
+  const snap = await db().collectionGroup("certificados").where("estado", "==", "validado").get();
+  let avisos = 0;
+  for (const d of snap.docs) {
+    const c = Certificado.safeParse(d.data());
+    if (!c.success || !tocaAvisar(c.data.vence, hoy)) continue;
+    const dias = diasParaVencer(c.data.vence, hoy);
+    await getMessaging()
+      .send({
+        topic: `chofer-${c.data.choferId}`,
+        notification: { title: `${NOMBRE_CERTIFICADO[c.data.tipo]}: ${dias === 0 ? "vence hoy" : `vence en ${dias} días`}`, body: "Renovalo y cargá la foto nueva en LA RAMAL › Papeles." },
+      })
+      .catch(() => undefined);
+    avisos++;
+  }
+  logger.info("Avisos de vencimiento enviados", { avisos, hoy });
 });
