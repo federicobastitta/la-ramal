@@ -18,7 +18,7 @@ await chofer.addInitScript(() => {
 const errores = [];
 for (const p of [chofer, panel]) p.on("pageerror", (e) => errores.push(e.message));
 
-await chofer.goto(URL + "/");
+await chofer.goto(URL + "/?sinArranque");
 await panel.goto(URL + "/panel.html");
 await chofer.getByRole("button", { name: "Avería", exact: true }).click();
 await chofer.getByRole("button", { name: "Frenos", exact: true }).click();
