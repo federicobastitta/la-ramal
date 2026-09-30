@@ -113,8 +113,11 @@ export function AppChofer() {
         <div className="screen">{pantallas[tab]}</div>
         {mensajeRadio.ultimo && (
           <div className="mensaje-radio" role="alert">
-            <div className="mensaje-radio-titulo">📻 Mensaje de la terminal{mensajeRadio.ultimo.para !== "todos" ? ` · ${mensajeRadio.ultimo.para}` : ""} · {hora(mensajeRadio.ultimo.creadoEn)}</div>
-            <div className="mensaje-radio-texto">{mensajeRadio.ultimo.texto}</div>
+            <div className="mensaje-radio-titulo">
+              {mensajeRadio.ultimo.de === "terminal" ? `📻 Mensaje de la terminal${mensajeRadio.ultimo.titulo ? ` · ${mensajeRadio.ultimo.titulo}` : ""}` : "📣 Aviso de la empresa"} · {hora(mensajeRadio.ultimo.creadoEn)}
+            </div>
+            {mensajeRadio.ultimo.de === "empresa" && <div className="mensaje-radio-texto">{mensajeRadio.ultimo.titulo}</div>}
+            <div className={mensajeRadio.ultimo.de === "empresa" ? "mensaje-radio-cuerpo" : "mensaje-radio-texto"}>{mensajeRadio.ultimo.texto}</div>
             <div className="mensaje-radio-botones">
               <button className="btn yellow" onClick={mensajeRadio.repetir}>🔁 Repetir</button>
               <button className="btn" onClick={mensajeRadio.cerrar} aria-label="Cerrar el mensaje">Listo</button>

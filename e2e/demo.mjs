@@ -69,8 +69,17 @@ if (await chofer.getByText("Solo para el 99").count()) throw new Error("Le lleg�
 await chofer.screenshot({ path: "e2e/chofer-radio.png" });
 await chofer.getByRole("button", { name: "Cerrar el mensaje" }).click();
 
+// Los avisos de la empresa también se escuchan.
+await panel.getByRole("button", { name: "Avisos", exact: true }).click();
+await panel.getByLabel("Título").fill("Doblar en Directorio");
+await panel.getByLabel("Texto").fill("Desde mañana el ramal B dobla en Directorio");
+await panel.getByRole("button", { name: "Publicar" }).click();
+await chofer.getByText("📣 Aviso de la empresa", { exact: false }).waitFor({ timeout: 5000 });
+await chofer.waitForFunction(() => window.__dichos.some((t) => t.startsWith("Aviso de la empresa. Doblar en Directorio.")), null, { timeout: 8000 });
+await chofer.getByRole("button", { name: "Cerrar el mensaje" }).click();
+
 await chofer.screenshot({ path: "e2e/chofer.png", fullPage: true });
 await panel.screenshot({ path: "e2e/panel.png", fullPage: true });
 await navegador.close();
 if (errores.length) throw new Error("Errores en la página: " + errores.join(" | "));
-console.log(`OK: reporte en el panel (urgencia alta: ${urgencia > 0}), taller visto por el chofer, pánico confirmado, coacción marcada, mensaje por la radio leído: «${dichos.at(-1)}».`);
+console.log(`OK: reporte en el panel (urgencia alta: ${urgencia > 0}), taller visto por el chofer, pánico confirmado, coacción marcada, mensaje por la radio leído: «${dichos.at(-1)}», aviso de la empresa leído en voz alta.`);

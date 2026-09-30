@@ -78,6 +78,7 @@ input[type=text],input[type=password],textarea,select{font:inherit;color:var(--f
 .mensaje-radio{position:fixed;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));max-width:560px;margin:0 auto;background:var(--accent);color:var(--on-accent);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;z-index:10;box-shadow:0 8px 24px rgba(0,0,0,.25)}
 .mensaje-radio-titulo{font-size:13px;font-weight:700;opacity:.85}
 .mensaje-radio-texto{font-size:22px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
+.mensaje-radio-cuerpo{font-size:16px;line-height:1.35;max-height:40vh;overflow:auto;white-space:pre-line}
 .mensaje-radio-botones{display:flex;gap:8px;flex-wrap:wrap}
 .mensaje-radio .btn.yellow{background:var(--navy);color:var(--on-navy)}
 .alarm{background:var(--coral);color:#fff;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px}
