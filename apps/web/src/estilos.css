@@ -193,3 +193,7 @@ input[type=text],input[type=password],textarea,select{font:inherit;color:var(--f
 .cal-piden{background:var(--coral)}
 
 /* ---- Demo: primer toque para que suene ---- */
+.arranque-demo{position:fixed;inset:0;background:rgba(20,33,61,.82);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.arranque-boton{border:0;border-radius:24px;background:var(--accent);color:var(--on-accent);padding:28px 24px;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:10px;font:inherit;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+.arranque-boton b{font-size:26px}
+.arranque-icono{font-size:48px;line-height:1}

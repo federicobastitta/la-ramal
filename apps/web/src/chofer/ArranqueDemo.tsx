@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MensajeRadio } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
 import { arrancarRadio } from "../radio/Radio";
@@ -20,56 +20,51 @@ function radioAM() {
 }
 
 /**
- * Demo de GitHub (pedido del dueño, 30/09/2026): la app arranca con una radio AM sonando y a los 10 segundos la terminal
+ * Demo de GitHub (pedido del dueño, 30/09/2026): la app arranca con una radio AM y a los 10 segundos la terminal
  * manda un mensaje por la radio (ding + voz). Con ?sinArranque en la dirección no hace nada (pruebas).
- * Siempre (dueño, 30/09): si la AM preferida no transmite se prueba otra; si ninguna suena o tarda más de 10 s,
- * el mensaje de la terminal sale igual.
- * Sin cartel (dueño, 30/09: «este cartel que no salga»): el iPhone y la mayoría de los navegadores no dejan sonar nada
- * hasta que la persona toca la pantalla. En ese caso no se muestra nada encima: el primer toque en cualquier lado
- * (una pestaña, un botón, la pantalla) prende la radio y a los 10 s de ese toque llega el mensaje. La barra de la radio lo dice chiquito.
+ * Siempre (dueño, 30/09): si la AM preferida no transmite se prueba otra; si ninguna suena, el mensaje sale igual.
+ * Botón «Empezar» (dueño, 30/09: «dejá el botón que estaba antes», sin él no sonaba): el iPhone y Chrome no dejan
+ * sonar la voz hasta que la persona toca la pantalla, aunque la radio haya arrancado sola. Por eso el botón sale
+ * SIEMPRE al abrir la demo, tapa toda la pantalla (cualquier toque sirve) y los 10 s se cuentan desde ese toque.
  */
 export function ArranqueDemo({ fuente, sesion }: { fuente: Fuente; sesion: Sesion }) {
-  const hecho = useRef(false);
   const apagado = fuente.modo !== "demo" || new URLSearchParams(location.search).has("sinArranque");
-
+  const [pedirToque, setPedirToque] = useState(!apagado);
+  const hecho = useRef(false);
   const enviado = useRef(false);
-  /** Manda el mensaje a los ESPERA_MS contados desde `desde` (el arranque, o el toque si el navegador frenó el sonido). */
-  const avisoALos10 = (desde: number) => {
+  const primera = useRef<Promise<unknown>>(Promise.resolve());
+
+  // Se intenta prender la AM de entrada: si el navegador la deja, ya suena detrás del botón.
+  useEffect(() => {
+    if (apagado || hecho.current) return;
+    hecho.current = true;
+    primera.current = radioAM();
+  }, []);
+
+  const empezar = () => {
+    setPedirToque(false);
+    despertarRadio(); // el iPhone exige dar play dentro del mismo toque
+    desbloquear();
+    void primera.current.then((r) => {
+      if (r !== "sonando") void radioAM(); // no se corta la que ya suena
+    });
     setTimeout(() => {
       if (enviado.current) return;
       enviado.current = true;
       const m: MensajeRadio = { id: crypto.randomUUID(), lineaId: sesion.lineaId, texto: AVISO_DEMO, para: sesion.cocheId || "todos", autor: "Terminal (demo)", creadoEn: Date.now() };
       void fuente.crear(sesion.lineaId, "mensajesRadio", m);
-    }, Math.max(0, desde + ESPERA_MS - Date.now()));
+    }, ESPERA_MS);
   };
 
-  useEffect(() => {
-    if (apagado || hecho.current) return;
-    hecho.current = true;
-    const inicio = Date.now();
-    let quitar = () => {};
-    void radioAM().then((r) => {
-      if (r !== "bloqueado") {
-        avisoALos10(inicio); // sonando, sin señal o tardando: el mensaje sale igual, sin esperar a la radio
-        return;
-      }
-      // Frenado hasta el primer toque: se espera cualquier toque, sin cartel.
-      const alTocar = () => {
-        quitar();
-        despertarRadio(); // el iPhone exige dar play dentro del mismo toque
-        desbloquear();
-        void radioAM();
-        avisoALos10(Date.now());
-      };
-      quitar = () => {
-        window.removeEventListener("pointerdown", alTocar, true);
-        window.removeEventListener("keydown", alTocar, true);
-      };
-      window.addEventListener("pointerdown", alTocar, { capture: true, once: true });
-      window.addEventListener("keydown", alTocar, { capture: true, once: true });
-    });
-    return () => quitar();
-  }, []);
-
-  return null;
+  if (!pedirToque) return null;
+  return (
+    // Cualquier toque en la pantalla arranca (no hace falta acertarle al botón).
+    <div className="arranque-demo" role="dialog" aria-label="Empezar la demo" onClick={empezar}>
+      <button className="arranque-boton" type="button">
+        <span className="arranque-icono">▶</span>
+        <b>Empezar</b>
+        <span>Suena la radio AM y a los 10 segundos llega un mensaje de la terminal</span>
+      </button>
+    </div>
+  );
 }
