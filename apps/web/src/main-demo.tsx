@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { AppChofer } from "./chofer/App";
 import { Panel } from "./panel/Panel";
 import "./estilos.css";
+import { sinZoom } from "./sin-zoom";
+
+sinZoom();
 
 /**
  * Demo en una sola pantalla: la app del chofer y el panel de la línea lado a lado.
