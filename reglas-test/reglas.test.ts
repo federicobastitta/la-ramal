@@ -157,6 +157,18 @@ describe("etapa 2: papeles y personal", () => {
     await assertSucceeds(updateDoc(doc(chofer(), `lineas/${L}/comunicados/a1`), { leidos: ["chofer2", "chofer1"] }));
   });
 
+  it("mensajes por la radio: los manda tráfico, los oye toda la línea y no se tocan", async () => {
+    const msj = (x: Record<string, unknown> = {}) => ({ id: "m1", lineaId: L, texto: "Desvío por Mitre", para: "todos", autor: "Tráfico", creadoEn: 1, ...x });
+    await assertFails(setDoc(doc(chofer(), `lineas/${L}/mensajesRadio/m1`), msj()));
+    await assertFails(setDoc(doc(trafico(), `lineas/${L}/mensajesRadio/m1`), msj({ texto: "a".repeat(281) })));
+    await assertFails(setDoc(doc(trafico(), `lineas/${L}/mensajesRadio/m1`), msj({ lineaId: "otra" })));
+    await assertSucceeds(setDoc(doc(trafico(), `lineas/${L}/mensajesRadio/m1`), msj()));
+    await assertSucceeds(getDoc(doc(chofer(), `lineas/${L}/mensajesRadio/m1`)));
+    await assertFails(getDoc(doc(chofer("x", "otra-linea"), `lineas/${L}/mensajesRadio/m1`)));
+    await assertFails(updateDoc(doc(trafico(), `lineas/${L}/mensajesRadio/m1`), { texto: "otro" }));
+    await assertFails(deleteDoc(doc(trafico(), `lineas/${L}/mensajesRadio/m1`)));
+  });
+
   it("jornadas: cada chofer escribe solo la suya", async () => {
     const j = { id: "chofer1-2026-09-29", lineaId: L, choferId: "chofer1", fecha: "2026-09-29", ramal: "A", vueltas: [], km: 0, actualizadaEn: 1, ejemplo: false };
     await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/jornadas/${j.id}`), j));

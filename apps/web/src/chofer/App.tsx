@@ -16,6 +16,7 @@ import { Companeros } from "./Companeros";
 import { AvisosMuestra } from "./AvisosMuestra";
 import { InicioHero } from "./InicioHero";
 import { Radio } from "../radio/Radio";
+import { useMensajesRadio } from "../radio/useMensajesRadio";
 import { useRecorridoAutomatico, type EstadoRecorrido } from "../dispositivo/recorrido-automatico";
 import { hoyISO } from "../compartido/pdf";
 import type { ConfigRecorrido } from "@la-ramal/nucleo";
@@ -37,6 +38,7 @@ export function AppChofer() {
   const bt = useRef<BotonBluetooth | null>(null);
   const papeles = usePapeles(fuente, sesion ?? null);
   const [config, setConfig] = useState<ConfigRecorrido | undefined>(undefined);
+  const mensajeRadio = useMensajesRadio(fuente, sesion ?? null);
   const recorrido = useRecorridoAutomatico(fuente, sesion ?? null, papeles.planillas.find((x) => x.fecha === hoyISO()), config);
 
   useEffect(() => {
@@ -109,6 +111,16 @@ export function AppChofer() {
         </div>
         {fuente.modo === "demo" && <AvisosMuestra ir={setTab} />}
         <div className="screen">{pantallas[tab]}</div>
+        {mensajeRadio.ultimo && (
+          <div className="mensaje-radio" role="alert">
+            <div className="mensaje-radio-titulo">📻 Mensaje de la terminal{mensajeRadio.ultimo.para !== "todos" ? ` · ${mensajeRadio.ultimo.para}` : ""} · {hora(mensajeRadio.ultimo.creadoEn)}</div>
+            <div className="mensaje-radio-texto">{mensajeRadio.ultimo.texto}</div>
+            <div className="mensaje-radio-botones">
+              <button className="btn yellow" onClick={mensajeRadio.repetir}>🔁 Repetir</button>
+              <button className="btn" onClick={mensajeRadio.cerrar} aria-label="Cerrar el mensaje">Listo</button>
+            </div>
+          </div>
+        )}
         <Radio demo={fuente.modo === "demo"} />
         <nav className="tabs" aria-label="Secciones">
           {tabs.map(([k, t, ic]) => (

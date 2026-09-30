@@ -2,6 +2,11 @@
 
 La app de los choferes de colectivo, y el panel de la línea que recibe lo que mandan.
 
+**Función principal: mensajes de la terminal por la radio.** Desde el panel (📻 Mensaje por la radio) la terminal escribe
+un mensaje para toda la flota o para un coche. En el celular del chofer suena un «ding», la radio baja y una voz lo lee en
+voz alta; después la radio vuelve sola. El mensaje queda en pantalla con «Repetir». La voz es la del propio teléfono
+(gratis, sin claves). Los mensajes de más de 15 minutos no se leen.
+
 Esta primera versión (MVP) trae:
 
 - **Botón de pánico.** Se dispara con la pantalla o con un botón Bluetooth externo, manteniéndolo 2 segundos o con doble toque.

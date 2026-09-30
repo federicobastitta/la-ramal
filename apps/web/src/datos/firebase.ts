@@ -22,12 +22,12 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, Escala, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
+import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, MensajeRadio, Escala, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
 import { ErrorPermanente } from "@la-ramal/nucleo";
 import type { ArchivoLocal, Colecciones, Filtro, Fuente, NombreColeccion, Persona, Rol, Sesion } from "./fuente";
 import type { ZodType } from "zod";
 
-const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido, escalas: Escala } as never;
+const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido, escalas: Escala, mensajesRadio: MensajeRadio } as never;
 
 /**
  * Fuente real: Firestore (con caché local persistente, así la app abre y muestra datos sin señal),
@@ -178,7 +178,7 @@ export class FuenteFirebase implements Fuente {
   }
 
   escuchar<K extends NombreColeccion>(lineaId: string, col: K, filtros: Filtro[], cb: (xs: Colecciones[K][]) => void) {
-    const q = query(collection(this.db, "lineas", lineaId, col), ...filtros.map((f) => where(f.campo, "==", f.igual)), limit(300));
+    const q = query(collection(this.db, "lineas", lineaId, col), ...filtros.map((f) => ("desde" in f ? where(f.campo, ">=", f.desde) : where(f.campo, "==", f.igual))), limit(300));
     return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ESQUEMAS[col].safeParse(d.data())).flatMap((p) => (p.success ? [p.data] : []))));
   }
 

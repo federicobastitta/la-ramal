@@ -139,7 +139,7 @@ export class FuenteDemo implements Fuente {
   escuchar<K extends NombreColeccion>(lineaId: string, col: K, filtros: Filtro[], cb: (xs: Colecciones[K][]) => void) {
     return this.escuchar_(() => {
       void this.todos(col).then((xs) =>
-        cb(xs.filter((x) => (x as { lineaId: string }).lineaId === lineaId && filtros.every((f) => (x as Record<string, unknown>)[f.campo] === f.igual))),
+        cb(xs.filter((x) => (x as { lineaId: string }).lineaId === lineaId && filtros.every((f) => ("desde" in f ? Number((x as Record<string, unknown>)[f.campo]) >= f.desde : (x as Record<string, unknown>)[f.campo] === f.igual)))),
       );
     });
   }

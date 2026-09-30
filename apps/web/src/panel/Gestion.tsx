@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Escala,
   NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, conformidadVigente, exigenciaPorRecorrido, leerVueltas, nivelVencimiento, sha256Hex,
+  MensajeRadio, textoParaLeer,
   type Certificado, type Comunicado, type Jornada, type Pedido, type Planilla, type Recibo,
 } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
 import type { Persona } from "../datos/fuente";
 import { fechaLinda, hoyISO, pdfSimple, sumarDias } from "../compartido/pdf";
+import { hora } from "../compartido/useAviso";
+import { anunciar, vozDisponible } from "../radio/locutor";
 
 type P = { fuente: Fuente; sesion: Sesion; avisar: (s: string) => void };
 
@@ -276,6 +279,73 @@ export function Planillas(p: P) {
               ))}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+/** Mensajes de la terminal por la radio: en el celular del chofer suena un «ding», la radio baja y una voz lo lee. */
+export function MensajesRadio(p: P) {
+  const [desde] = useState(() => Date.now() - 7 * 24 * 3600_000);
+  const [enviados, setEnviados] = useState<MensajeRadio[]>([]);
+  useEffect(() => p.fuente.escuchar(p.sesion.lineaId, "mensajesRadio", [{ campo: "creadoEn", desde }], setEnviados), [p.fuente, p.sesion, desde]);
+  const [texto, setTexto] = useState("");
+  const [para, setPara] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const RAPIDOS = ["Hay un corte más adelante: tomen el desvío.", "Presentarse en la cabecera al terminar la vuelta.", "Demoras por tránsito: mantengan la frecuencia.", "Comunicarse con tráfico."];
+  const armar = (): MensajeRadio | null => {
+    const r = MensajeRadio.safeParse({ id: crypto.randomUUID(), lineaId: p.sesion.lineaId, texto, para: para.trim() || "todos", autor: p.sesion.nombre, creadoEn: Date.now() });
+    return r.success ? r.data : null;
+  };
+  const enviar = async () => {
+    const m = armar();
+    if (!m) return p.avisar("Escribí el mensaje (hasta 280 letras)");
+    setEnviando(true);
+    try {
+      await p.fuente.crear(p.sesion.lineaId, "mensajesRadio", m);
+      setTexto("");
+      p.avisar(m.para === "todos" ? "Mensaje enviado a toda la flota" : `Mensaje enviado al ${m.para}`);
+    } catch {
+      p.avisar("No se pudo enviar: revisá la conexión");
+    } finally {
+      setEnviando(false);
+    }
+  };
+  const escuchar = () => {
+    const m = armar();
+    if (!m) return p.avisar("Escribí el mensaje para escucharlo");
+    void anunciar(textoParaLeer(m));
+  };
+  return (
+    <div className="panel">
+      <div className="col">
+        <div className="card">
+          <h3>📻 Mensaje por la radio</h3>
+          <div className="muted">En el celular del chofer suena un «ding», la radio baja y una voz lee el mensaje. Así se entera sin mirar la pantalla.</div>
+          <label className="f" htmlFor="mr-texto">Mensaje<textarea id="mr-texto" rows={3} maxLength={280} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ej.: Corte en Mitre y 12 de Octubre, tomen por Rivadavia." /></label>
+          <div className="muted" style={{ fontSize: 12, textAlign: "right" }}>{texto.trim().length} / 280</div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-start" }}>
+            {RAPIDOS.map((r) => <button key={r} className="chip" style={{ cursor: "pointer", border: 0 }} onClick={() => setTexto(r)}>{r}</button>)}
+          </div>
+          <label className="f" htmlFor="mr-para">Para<input id="mr-para" type="text" maxLength={40} value={para} onChange={(e) => setPara(e.target.value)} placeholder="Vacío = toda la flota · o el coche, ej. Interno 23" /></label>
+          <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
+            <button className="btn yellow" onClick={enviar} disabled={enviando}>{enviando ? "Enviando…" : "Enviar por la radio"}</button>
+            <button className="btn" onClick={escuchar} disabled={!vozDisponible()}>🔊 Escuchar cómo suena</button>
+          </div>
+          {!vozDisponible() && <div className="muted">Este navegador no tiene voz: el mensaje llega igual y en el celular se lee con la voz del teléfono.</div>}
+        </div>
+      </div>
+      <div className="col">
+        <div className="card">
+          <h3>Enviados</h3>
+          {enviados.length === 0 ? <div className="muted">Todavía no se mandó ningún mensaje.</div> : [...enviados].sort((a, b) => b.creadoEn - a.creadoEn).slice(0, 30).map((m) => (
+            <div className="it" key={m.id} style={{ display: "block" }}>
+              <div className="row"><b>{m.para === "todos" ? "Toda la flota" : m.para}</b><span className="muted">{hora(m.creadoEn)}{m.autor ? ` · ${m.autor}` : ""}</span></div>
+              <div>{m.texto}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
