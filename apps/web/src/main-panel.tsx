@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
 import { Panel } from "./panel/Panel";
 import "./estilos.css";
+import { sinZoom } from "./sin-zoom";
+
+sinZoom();
 
 createRoot(document.getElementById("raiz")!).render(
   <>
