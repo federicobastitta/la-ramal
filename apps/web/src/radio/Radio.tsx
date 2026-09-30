@@ -21,7 +21,7 @@ const guardar = (id: string) => {
   }
 };
 
-type Estado = "apagada" | "conectando" | "sonando" | "error";
+type Estado = "apagada" | "conectando" | "sonando" | "error" | "espera_toque";
 
 /** Da play y espera a que suene de verdad; si en `ms` no suena, la corta (una transmisión puede quedar colgada). */
 function sonarConTope(a: HTMLAudioElement, ms: number): Promise<Arranque> {
@@ -159,6 +159,11 @@ export function Radio({ demo }: { demo: boolean }) {
       }
       // Se prueban de a una: si una radio no arranca en 8 s (caída o colgada) se pasa a la siguiente.
       for (const e of candidatas.slice(0, 6)) {
+        // Ya suena esa (se despertó con el toque de la persona): no se corta para volver a empezarla.
+        if (!a.paused && a.src === e.stream) {
+          setActual(e.id);
+          return "sonando";
+        }
         setActual(e.id);
         guardar(e.id);
         setBanda(e.banda);
@@ -166,7 +171,7 @@ export function Radio({ demo }: { demo: boolean }) {
         a.src = e.stream!;
         const r = await sonarConTope(a, 8_000);
         if (r === "sonando" || r === "bloqueado") {
-          if (r === "bloqueado") setEstado("apagada");
+          if (r === "bloqueado") setEstado("espera_toque");
           return r;
         }
       }
@@ -200,7 +205,7 @@ export function Radio({ demo }: { demo: boolean }) {
       ? `⚽ ${juegaMiEquipo.estado === "en_vivo" ? "Juega ahora" : "Hoy juega"} ${juegaMiEquipo.partido.local} – ${juegaMiEquipo.partido.visitante}`
       : estado !== "sonando" && estado !== "conectando" && corre
       ? `🏁 ${corre.estado === "en_vivo" ? "Se está corriendo" : corre.carrera.horaConfirmada === false ? "Hoy corre" : `Larga en ${corre.faltaMin} min`}: ${corre.carrera.nombre}`
-      : estado === "sonando" ? "Sonando" : estado === "conectando" ? "Conectando…" : estado === "error" ? (sinDirectorio ? "Sin conexión con las radios" : "Esta radio no está transmitiendo por internet ahora") : "Radio";
+      : estado === "sonando" ? "Sonando" : estado === "espera_toque" ? "Tocá la pantalla y suena" : estado === "conectando" ? "Conectando…" : estado === "error" ? (sinDirectorio ? "Sin conexión con las radios" : "Esta radio no está transmitiendo por internet ahora") : "Radio";
 
   return (
     <div className="radio">
