@@ -98,8 +98,22 @@ async function tomarSonido(): Promise<() => void> {
   };
 }
 
+/**
+ * Chrome y el iPhone callan la voz (y el ding) si la persona todavía no tocó la página, sin avisar ni dar error:
+ * el mensaje se daba por dicho y no se escuchaba. Ahora el locutor espera al primer toque para hablar.
+ */
+let habilitar: () => void = () => {};
+const habilitado = new Promise<void>((ok) => {
+  habilitar = ok;
+});
+function yaTocaron(): boolean {
+  const ua = typeof navigator !== "undefined" ? (navigator as unknown as { userActivation?: { hasBeenActive: boolean } }).userActivation : undefined;
+  return !!ua?.hasBeenActive;
+}
+
 /** Se llama en el primer toque de la pantalla: habilita el sonido y la voz para después. */
 export function desbloquear() {
+  habilitar();
   const c = audio();
   if (c?.state === "suspended") void c.resume();
   // El iPhone solo deja reproducir más tarde un audio que ya se tocó una vez con un toque de la persona.
@@ -212,7 +226,7 @@ async function conRadioBaja(fn: () => Promise<void>) {
 
 /** Ding + voz, uno atrás del otro (si llegan dos mensajes juntos no se pisan). Mientras, se toma el sonido del celular. */
 export function anunciar(texto: string): Promise<void> {
-  cola = cola.then(() => conRadioBaja(async () => {
+  cola = cola.then(() => (yaTocaron() ? undefined : habilitado)).then(() => conRadioBaja(async () => {
     const soltar = await tomarSonido();
     try {
       await ding();
