@@ -23,3 +23,6 @@ Hablar en español, simple. Dueño: el mismo de Alldoo/Conectar/FC.
 - 30/09 BOLSA DE FRANCOS (pedido del dueño): Papeles › Francos (calendario del mes) y panel › Bolsa de francos. Núcleo
   `francos.ts` (ofrezco/pido, "a cambio de", publicado → acordado → aprobado por gerencia), colección `francos` con reglas,
   función `alAprobarFranco` que intercambia las planillas. En la demo: francos Carlos domingo, Jorge miércoles, Marcela lunes.
+- 30/09 DEMO (pedido del dueño): la app del chofer en modo demo arranca con una AM (Radio Mitre 790 o la primera AM que
+  transmita) y a los 5 s la terminal manda "Cuando termine el recorrido, pase por el taller." (`chofer/ArranqueDemo.tsx`).
+  Si el navegador frena el sonido sin toque, sale un botón grande "Empezar". El e2e abre con `?sinArranque`.

@@ -23,6 +23,14 @@ const guardar = (id: string) => {
 
 type Estado = "apagada" | "conectando" | "sonando" | "error";
 
+/** Resultado de prender la radio sola: el navegador puede frenarla hasta que la persona toque la pantalla. */
+export type Arranque = "sonando" | "bloqueado" | "sin_senal";
+let arrancar: ((banda: Banda, preferida: string) => Promise<Arranque>) | null = null;
+/** Prende una radio de la banda pedida (la preferida si transmite). Lo usa la demo para arrancar con una AM. */
+export function arrancarRadio(banda: Banda, preferida: string): Promise<Arranque> {
+  return arrancar ? arrancar(banda, preferida) : Promise.resolve("sin_senal");
+}
+
 /**
  * Radio AM/FM de la app. Queda abajo, arriba de la barra, en todas las pantallas.
  * - Con el coche en movimiento solo se muestran botones grandes (play/pausa y cambiar a la anterior o siguiente):
@@ -110,6 +118,40 @@ export function Radio({ demo }: { demo: boolean }) {
     const todas = await encender();
     void tocar(todas.find((e) => e.id === actual) ?? todas[0]!);
   };
+
+  // Arranque automático (demo): elige la emisora, la pone y avisa si el navegador no la deja sonar.
+  useEffect(() => {
+    arrancar = async (b, preferida) => {
+      const todas = await encender();
+      const deLaBanda = todas.filter((e) => e.banda === b && e.stream);
+      const e = deLaBanda.find((x) => x.id === preferida) ?? deLaBanda[0];
+      setBanda(b);
+      const a = audio.current;
+      if (!e || !a) {
+        // Sin transmisión por internet: igual queda elegida la AM, así se ve en la barra.
+        const fija = todas.find((x) => x.id === preferida) ?? todas.find((x) => x.banda === b);
+        if (fija) {
+          setActual(fija.id);
+          guardar(fija.id);
+        }
+        return "sin_senal";
+      }
+      setActual(e.id);
+      guardar(e.id);
+      setEstado("conectando");
+      a.src = e.stream!;
+      try {
+        await a.play();
+        return "sonando";
+      } catch (err) {
+        setEstado("apagada");
+        return err instanceof DOMException && err.name === "NotAllowedError" ? "bloqueado" : "sin_senal";
+      }
+    };
+    return () => {
+      arrancar = null;
+    };
+  }, [encender]);
 
   // Los mensajes de la terminal bajan esta radio mientras hablan.
   useEffect(() => {

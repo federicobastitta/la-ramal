@@ -17,6 +17,7 @@ import { AvisosMuestra } from "./AvisosMuestra";
 import { InicioHero } from "./InicioHero";
 import { Radio } from "../radio/Radio";
 import { useMensajesRadio } from "../radio/useMensajesRadio";
+import { ArranqueDemo } from "./ArranqueDemo";
 import { useRecorridoAutomatico, type EstadoRecorrido } from "../dispositivo/recorrido-automatico";
 import { hoyISO } from "../compartido/pdf";
 import type { ConfigRecorrido } from "@la-ramal/nucleo";
@@ -125,6 +126,7 @@ export function AppChofer() {
           </div>
         )}
         <Radio demo={fuente.modo === "demo"} />
+        <ArranqueDemo fuente={fuente} sesion={sesion} />
         <nav className="tabs" aria-label="Secciones">
           {tabs.map(([k, t, ic]) => (
             <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined} style={{ position: "relative" }}>
