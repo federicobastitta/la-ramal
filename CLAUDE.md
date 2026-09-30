@@ -13,3 +13,5 @@ Hablar en español, simple. Dueño: el mismo de Alldoo/Conectar/FC.
   teléfono; Polly quedó como opción paga, no se usa). Núcleo `mensaje-radio.ts`, colección `mensajesRadio` (la crea
   gestión, la lee la línea, no se edita ni borra), `radio/locutor.ts` (ding con WebAudio, baja la radio; en iPhone la
   pausa porque no deja cambiar el volumen) y `radio/useMensajesRadio.ts`. Los navegadores exigen un toque previo para sonar.
+- 30/09 "el aviso se tiene que escuchar": los avisos de la empresa (panel › Avisos) también suenan con ding + voz
+  (`textoDeAvisoParaLeer`, corta a ~350 letras y manda a Papeles). Mismo hook `useMensajesRadio`, ventana de 15 min.

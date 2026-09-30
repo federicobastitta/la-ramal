@@ -28,3 +28,22 @@ describe("mensajes de la terminal por la radio", () => {
     expect(MensajeRadio.safeParse({ id: "x", lineaId: "l", texto: "a".repeat(281), creadoEn: 1 }).success).toBe(false);
   });
 });
+
+describe("avisos de la empresa en voz alta", () => {
+  it("lee título y texto, y dice si es importante", async () => {
+    const { textoDeAvisoParaLeer } = await import("../src/mensaje-radio");
+    expect(textoDeAvisoParaLeer({ titulo: "Doblar en Directorio", texto: "Desde mañana el ramal B dobla en Directorio" })).toBe(
+      "Aviso de la empresa. Doblar en Directorio. Desde mañana el ramal B dobla en Directorio.",
+    );
+    expect(textoDeAvisoParaLeer({ titulo: "Paro", texto: "Mañana no hay servicio.", importante: true })).toBe("Aviso importante de la empresa. Paro. Mañana no hay servicio.");
+  });
+
+  it("un aviso largo se corta en una oración y manda a Papeles", async () => {
+    const { textoDeAvisoParaLeer, LARGO_AVISO_HABLADO } = await import("../src/mensaje-radio");
+    const largo = Array.from({ length: 30 }, (_, i) => `Esta es la oración número ${i + 1}.`).join(" ");
+    const dicho = textoDeAvisoParaLeer({ titulo: "Nuevo reglamento", texto: largo });
+    expect(dicho.endsWith("El aviso completo está en Papeles.")).toBe(true);
+    expect(dicho.length).toBeLessThan(LARGO_AVISO_HABLADO + 120);
+    expect(dicho).toContain("número 1.");
+  });
+});

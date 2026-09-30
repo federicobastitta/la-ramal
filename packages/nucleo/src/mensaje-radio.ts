@@ -37,3 +37,25 @@ export function textoParaLeer(m: Pick<MensajeRadio, "texto" | "para">): string {
   const cierre = /[.!?¡¿]$/.test(texto) ? "" : ".";
   return `${m.para === "todos" ? "Mensaje de la terminal" : `Mensaje de la terminal para el ${m.para}`}. ${texto}${cierre}`;
 }
+
+/** Tope de lo que lee la voz de un aviso de la empresa: el resto queda escrito en Papeles. */
+export const LARGO_AVISO_HABLADO = 350;
+
+/**
+ * Lo que dice la voz cuando la empresa publica un aviso (dueño, 30/09: «el aviso se tiene que escuchar»).
+ * Un aviso largo se corta al final de una oración y se avisa que el resto está en Papeles.
+ */
+export function textoDeAvisoParaLeer(c: { titulo: string; texto: string; importante?: boolean }): string {
+  const limpio = (s: string) => s.trim().replace(/\s+/g, " ");
+  const punto = (s: string) => (/[.!?¡¿]$/.test(s) ? s : `${s}.`);
+  const titulo = punto(limpio(c.titulo));
+  let texto = limpio(c.texto);
+  let recortado = false;
+  if (texto.length > LARGO_AVISO_HABLADO) {
+    const corte = texto.slice(0, LARGO_AVISO_HABLADO);
+    const fin = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("! "), corte.lastIndexOf("? "));
+    texto = fin > 80 ? corte.slice(0, fin + 1) : `${corte.slice(0, corte.lastIndexOf(" "))}…`;
+    recortado = true;
+  }
+  return `${c.importante ? "Aviso importante de la empresa" : "Aviso de la empresa"}. ${titulo} ${punto(texto)}${recortado ? " El aviso completo está en Papeles." : ""}`;
+}

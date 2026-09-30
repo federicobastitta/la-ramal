@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Escala,
   NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, conformidadVigente, exigenciaPorRecorrido, leerVueltas, nivelVencimiento, sha256Hex,
-  MensajeRadio, textoParaLeer,
+  MensajeRadio, textoDeAvisoParaLeer, textoParaLeer,
   type Certificado, type Comunicado, type Jornada, type Pedido, type Planilla, type Recibo,
 } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
@@ -365,7 +365,11 @@ export function Avisos(p: P) {
     await p.fuente.crear(p.sesion.lineaId, "comunicados", c);
     setTitulo("");
     setTexto("");
-    p.avisar("Aviso publicado a todos los choferes");
+    p.avisar("Aviso publicado: se escucha en los celulares de los choferes");
+  };
+  const escuchar = () => {
+    if (!titulo.trim() || !texto.trim()) return p.avisar("Poné título y texto para escucharlo");
+    void anunciar(textoDeAvisoParaLeer({ titulo, texto, importante }));
   };
   return (
     <div className="panel">
@@ -375,7 +379,9 @@ export function Avisos(p: P) {
           <label className="f" htmlFor="a-titulo">Título<input id="a-titulo" type="text" maxLength={120} value={titulo} onChange={(e) => setTitulo(e.target.value)} /></label>
           <label className="f" htmlFor="a-texto">Texto<textarea id="a-texto" rows={4} maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
           <label className="f" style={{ flexDirection: "row", alignItems: "center", gap: 8 }} htmlFor="a-imp"><input id="a-imp" type="checkbox" checked={importante} onChange={(e) => setImportante(e.target.checked)} /> Importante</label>
+          <div className="muted">Al publicarlo, en el celular de cada chofer suena un «ding», la radio baja y una voz lo lee.</div>
           <button className="btn yellow" onClick={publicar}>Publicar</button>
+          <button className="btn" onClick={escuchar} disabled={!vozDisponible()}>🔊 Escuchar cómo suena</button>
         </div>
       </div>
       <div className="col">
