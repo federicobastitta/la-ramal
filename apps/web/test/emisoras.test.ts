@@ -40,3 +40,19 @@ describe("radios AM/FM", () => {
     for (const e of EMISORAS) expect(e.frecuencia).toMatch(/^\d{2,4}(\.\d)?$/);
   });
 });
+
+describe("arranque de la demo", () => {
+  it("prueba primero la preferida, después su banda y al final la otra; solo con transmisión", async () => {
+    const { ordenDeArranque } = await import("../src/radio/emisoras");
+    const r = unirConDirectorio(EMISORAS, [
+      est("Radio Mitre", "https://a/mitre"),
+      est("Radio 10", "https://a/radio10"),
+      est("La 100", "https://a/la100"),
+    ]);
+    expect(ordenDeArranque(r, "AM", "mitre").map((e) => e.id)).toEqual(["mitre", "radio10", "la100"]);
+    // Si la preferida no transmite, igual arranca otra AM.
+    const sinMitre = r.map((e) => (e.id === "mitre" ? { ...e, stream: null } : e));
+    expect(ordenDeArranque(sinMitre, "AM", "mitre").map((e) => e.id)).toEqual(["radio10", "la100"]);
+    expect(ordenDeArranque(r.map((e) => ({ ...e, stream: null })), "AM", "mitre")).toEqual([]);
+  });
+});

@@ -61,3 +61,16 @@ export async function buscarEmisoras(fetcher: typeof fetch = fetch): Promise<Emi
   }
   throw ultimoError ?? new Error("Sin conexión con el directorio de radios");
 }
+
+/**
+ * Orden en que la demo prueba las radios para arrancar sí o sí (dueño, 30/09: «que siempre empiece con la radio»):
+ * primero la preferida, después las demás de la banda pedida y por último las de la otra banda. Solo las que tienen
+ * transmisión; si una no suena se pasa a la siguiente.
+ */
+export function ordenDeArranque(todas: Emisora[], banda: Banda, preferida: string): Emisora[] {
+  const con = todas.filter((e) => e.stream);
+  const pref = con.filter((e) => e.id === preferida);
+  const misma = con.filter((e) => e.banda === banda && e.id !== preferida);
+  const otra = con.filter((e) => e.banda !== banda && e.id !== preferida);
+  return [...pref, ...misma, ...otra];
+}
