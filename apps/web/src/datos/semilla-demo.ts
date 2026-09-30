@@ -1,4 +1,4 @@
-import { distanciaM, indiceExigencia, largoRecorridoM, sha256Hex, type Certificado, type Comunicado, type ConfigRecorrido, type Jornada, type Pedido, type Ping, type Planilla, type Punto, type Recibo, type Escala } from "@la-ramal/nucleo";
+import { distanciaM, indiceExigencia, largoRecorridoM, sha256Hex, type Certificado, type Comunicado, type ConfigRecorrido, type Jornada, type Pedido, type Ping, type Planilla, type Punto, type Recibo, type Escala, type PublicacionFranco } from "@la-ramal/nucleo";
 import { hoyISO, pdfSimple, sumarDias } from "../compartido/pdf";
 import { idb } from "./idb";
 
@@ -9,7 +9,7 @@ export const CHOFERES_DEMO = [
   { uid: "demo-chofer-rios", nombre: "Marcela Ríos", coche: "Interno 12" },
 ];
 
-const VERSION = "semilla-v3";
+const VERSION = "semilla-v4";
 const L = "linea-22";
 
 export async function sembrarDemo(): Promise<void> {
@@ -18,7 +18,9 @@ export async function sembrarDemo(): Promise<void> {
   const docs: [string, unknown][] = [];
   const poner = (col: string, d: { id: string }) => docs.push([`${col}/${d.id}`, d]);
 
-  // Planillas: los últimos 75 días (para que haya recibos con sus horas) y los próximos 7 para los tres choferes (domingo franco).
+  // Planillas: los últimos 75 días (para que haya recibos con sus horas) y los próximos 7 para los tres choferes.
+  // Francos: Carlos el domingo, Jorge el miércoles y Marcela el lunes (así la bolsa de francos tiene con quién cambiar).
+  const DIA_FRANCO = [0, 3, 1];
   for (const [i, c] of CHOFERES_DEMO.entries()) {
     for (let d = -75; d <= 7; d++) {
       const fecha = sumarDias(hoy, d);
@@ -30,7 +32,7 @@ export async function sembrarDemo(): Promise<void> {
         const f = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
         return { sale: f(sale), llega: f(sale + dur) };
       });
-      const p: Planilla = { id: `${c.uid}-${fecha}`, lineaId: L, choferId: c.uid, choferNombre: c.nombre, fecha, cocheId: c.coche, cabecera: "Terminal Quilmes Oeste", ramal: "A", vueltas, franco: dia === 0, publicadaEn: Date.now() };
+      const p: Planilla = { id: `${c.uid}-${fecha}`, lineaId: L, choferId: c.uid, choferNombre: c.nombre, fecha, cocheId: c.coche, cabecera: "Terminal Quilmes Oeste", ramal: "A", vueltas, franco: dia === DIA_FRANCO[i], publicadaEn: Date.now() };
       poner("planillas", p);
     }
   }
@@ -80,6 +82,15 @@ export async function sembrarDemo(): Promise<void> {
   const sabado = sumarDias(hoy, (6 - new Date().getDay() + 7) % 7 || 7);
   const cambio: Pedido = { id: "pedido-benitez-sabado", lineaId: L, choferId: "demo-chofer-benitez", choferNombre: "Jorge Benítez", tipo: "cambio_turno", detalle: "Cumpleaños de mi hija", fecha: sabado, adjuntos: [], estado: "ofrecido", creadoEn: Date.now() - 3_600_000 };
   poner("pedidos", cambio);
+
+  // Bolsa de francos: uno ofrecido, uno pedido y uno ya acordado esperando a la gerencia.
+  const proximo = (diaSemana: number) => sumarDias(hoy, (diaSemana - new Date().getDay() + 7) % 7 || 7);
+  const francos: PublicacionFranco[] = [
+    { id: "franco-benitez-miercoles", lineaId: L, tipo: "ofrezco", choferId: "demo-chofer-benitez", choferNombre: "Jorge Benítez", fecha: proximo(3), detalle: "Me quedo sin nada que hacer ese día", estado: "publicado", creadoEn: Date.now() - 5_400_000 },
+    { id: "franco-rios-domingo", lineaId: L, tipo: "pido", choferId: "demo-chofer-rios", choferNombre: "Marcela Ríos", fecha: proximo(0), detalle: "Tengo un casamiento", estado: "publicado", creadoEn: Date.now() - 7_200_000 },
+    { id: "franco-rios-lunes", lineaId: L, tipo: "ofrezco", choferId: "demo-chofer-rios", choferNombre: "Marcela Ríos", fecha: proximo(1), detalle: "", estado: "acordado", contraparteId: "demo-chofer-benitez", contraparteNombre: "Jorge Benítez", creadoEn: Date.now() - 9_000_000, actualizadoEn: Date.now() - 3_600_000 },
+  ];
+  francos.forEach((f) => poner("francos", f));
 
   // Escala de EJEMPLO con los números que publicaron los diarios (abril 2026). Hay que confirmarla con la escala oficial.
   const escala: Escala = {

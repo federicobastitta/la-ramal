@@ -3,10 +3,10 @@ import { NOMBRE_ESTADO, NOMBRE_TIPO, type AlertaPanico, type Area, type EstadoRe
 import { crearFuente, type Fuente, type Sesion } from "../datos";
 import { Adjunto } from "../compartido/Adjunto";
 import { hora, useAviso } from "../compartido/useAviso";
-import { Avisos, MensajesRadio, Personal, Planillas, Recorridos } from "./Gestion";
+import { Avisos, Francos, MensajesRadio, Personal, Planillas, Recorridos } from "./Gestion";
 
-type Vista = "reportes" | "radio" | "personal" | "planillas" | "avisos" | "recorridos";
-const VISTAS: [Vista, string][] = [["reportes", "Reportes y pánico"], ["radio", "📻 Mensaje por la radio"], ["personal", "Personal"], ["planillas", "Planillas"], ["avisos", "Avisos"], ["recorridos", "Exigencia por recorrido"]];
+type Vista = "reportes" | "radio" | "francos" | "personal" | "planillas" | "avisos" | "recorridos";
+const VISTAS: [Vista, string][] = [["reportes", "Reportes y pánico"], ["radio", "📻 Mensaje por la radio"], ["francos", "Bolsa de francos"], ["personal", "Personal"], ["planillas", "Planillas"], ["avisos", "Avisos"], ["recorridos", "Exigencia por recorrido"]];
 
 const NOMBRE_AREA: Record<Area, string> = { taller: "Taller", trafico: "Tráfico", siniestros: "Siniestros", seguridad: "Seguridad" };
 
@@ -80,6 +80,7 @@ export function Panel() {
       <>
         {menu}
         {vista === "radio" && <MensajesRadio {...props} />}
+        {vista === "francos" && <Francos {...props} />}
         {vista === "personal" && <Personal {...props} />}
         {vista === "planillas" && <Planillas {...props} />}
         {vista === "avisos" && <Avisos {...props} />}

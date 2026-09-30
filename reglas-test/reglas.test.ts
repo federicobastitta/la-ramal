@@ -169,6 +169,26 @@ describe("etapa 2: papeles y personal", () => {
     await assertFails(deleteDoc(doc(trafico(), `lineas/${L}/mensajesRadio/m1`)));
   });
 
+  it("bolsa de francos: publica el chofer, lo toma un compañero y aprueba la gerencia", async () => {
+    const f = (x: Record<string, unknown> = {}) => ({ id: "f1", lineaId: L, tipo: "ofrezco", choferId: "chofer1", choferNombre: "Carlos", fecha: "2026-10-04", detalle: "", estado: "publicado", creadoEn: 1, ...x });
+    const ruta = `lineas/${L}/francos/f1`;
+    await assertFails(setDoc(doc(beto(), ruta), f()));
+    await assertFails(setDoc(doc(chofer(), ruta), f({ estado: "aprobado" })));
+    await assertFails(setDoc(doc(chofer(), ruta), f({ contraparteId: "chofer2" })));
+    await assertSucceeds(setDoc(doc(chofer(), ruta), f()));
+    await assertSucceeds(getDoc(doc(beto(), ruta)));
+    // Nadie aprueba lo que todavía no tomó un compañero; el dueño no se lo toma a sí mismo.
+    await assertFails(updateDoc(doc(trafico(), ruta), { estado: "aprobado", actualizadoEn: 2 }));
+    await assertFails(updateDoc(doc(chofer(), ruta), { estado: "acordado", contraparteId: "chofer1", contraparteNombre: "Carlos" }));
+    await assertFails(updateDoc(doc(beto(), ruta), { estado: "acordado", contraparteId: "otro", contraparteNombre: "Otro" }));
+    await assertSucceeds(updateDoc(doc(beto(), ruta), { estado: "acordado", contraparteId: "chofer2", contraparteNombre: "Beto", actualizadoEn: 2 }));
+    await assertFails(updateDoc(doc(beto(), ruta), { estado: "aprobado", actualizadoEn: 3 }));
+    await assertFails(updateDoc(doc(trafico(), ruta), { estado: "aprobado", contraparteId: "otro" }));
+    await assertSucceeds(updateDoc(doc(trafico(), ruta), { estado: "aprobado", actualizadoEn: 3 }));
+    await assertFails(updateDoc(doc(chofer(), ruta), { estado: "cancelado", actualizadoEn: 4 }));
+    await assertFails(deleteDoc(doc(trafico(), ruta)));
+  });
+
   it("jornadas: cada chofer escribe solo la suya", async () => {
     const j = { id: "chofer1-2026-09-29", lineaId: L, choferId: "chofer1", fecha: "2026-09-29", ramal: "A", vueltas: [], km: 0, actualizadaEn: 1, ejemplo: false };
     await assertSucceeds(setDoc(doc(chofer(), `lineas/${L}/jornadas/${j.id}`), j));

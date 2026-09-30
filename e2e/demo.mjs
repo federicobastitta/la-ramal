@@ -78,8 +78,28 @@ await chofer.getByText("📣 Aviso de la empresa", { exact: false }).waitFor({ t
 await chofer.waitForFunction(() => window.__dichos.some((t) => t.startsWith("Aviso de la empresa. Doblar en Directorio.")), null, { timeout: 8000 });
 await chofer.getByRole("button", { name: "Cerrar el mensaje" }).click();
 
+// Bolsa de francos: Carlos toma el miércoles que ofrece Jorge; la gerencia aprueba y la planilla de Carlos pasa a franco.
+await chofer.getByRole("button", { name: /^Papeles/ }).click();
+await chofer.getByRole("tab", { name: "Francos" }).click();
+// El miércoles que ofrece Jorge puede caer en el mes que viene.
+await chofer.getByRole("grid").waitFor();
+if (!(await chofer.getByRole("button", { name: /1 ofrecen franco/ }).count())) await chofer.getByRole("button", { name: "Mes siguiente" }).click();
+await chofer.getByRole("button", { name: /1 ofrecen franco/ }).first().click();
+await chofer.getByText("Jorge Benítez ofrece su franco").waitFor({ timeout: 5000 });
+await chofer.getByRole("button", { name: "Tomar este franco" }).click();
+await chofer.getByText("Acordado: espera a la gerencia").waitFor({ timeout: 5000 });
+await panel.getByRole("button", { name: "Bolsa de francos", exact: true }).click();
+const acordado = panel.locator(".it", { hasText: "Lo tomó Carlos Medina" });
+await acordado.waitFor({ timeout: 5000 });
+await acordado.getByRole("button", { name: "Aprobar" }).click();
+await panel.getByText("Aprobado: las planillas quedaron cambiadas").waitFor({ timeout: 5000 });
+await chofer.getByText("Aprobado", { exact: true }).waitFor({ timeout: 5000 });
+const francosDeCarlos = await chofer.getByRole("button", { name: /, tu franco/ }).count();
+await chofer.screenshot({ path: "e2e/chofer-francos.png", fullPage: true });
+await panel.screenshot({ path: "e2e/panel-francos.png" });
+
 await chofer.screenshot({ path: "e2e/chofer.png", fullPage: true });
 await panel.screenshot({ path: "e2e/panel.png", fullPage: true });
 await navegador.close();
 if (errores.length) throw new Error("Errores en la página: " + errores.join(" | "));
-console.log(`OK: reporte en el panel (urgencia alta: ${urgencia > 0}), taller visto por el chofer, pánico confirmado, coacción marcada, mensaje por la radio leído: «${dichos.at(-1)}», aviso de la empresa leído en voz alta.`);
+console.log(`OK: reporte en el panel (urgencia alta: ${urgencia > 0}), taller visto por el chofer, pánico confirmado, coacción marcada, mensaje por la radio leído: «${dichos.at(-1)}», aviso de la empresa leído en voz alta, franco tomado y aprobado (Carlos ve ${francosDeCarlos} días de franco en el calendario).`);

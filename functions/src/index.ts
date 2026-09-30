@@ -10,7 +10,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { z } from "zod";
-import { AlertaPanico, Certificado, NOMBRE_CERTIFICADO, NuevoReporte, Pedido, Planilla, clasificarPorReglas, diasParaVencer, hashearPin, intercambiarPlanillas, pinValido, tocaAvisar, unirClasificacion, verificarPin, type HashPin } from "@la-ramal/nucleo";
+import { AlertaPanico, Certificado, NOMBRE_CERTIFICADO, NuevoReporte, Pedido, Planilla, PublicacionFranco, diasDelCambio, clasificarPorReglas, diasParaVencer, hashearPin, intercambiarPlanillas, pinValido, tocaAvisar, unirClasificacion, verificarPin, type HashPin } from "@la-ramal/nucleo";
 import { MODELO_POR_DEFECTO, clasificarConIA } from "./clasificar-ia";
 import { camposDelRecibo, leerReciboConIA } from "./leer-recibo";
 
@@ -223,6 +223,46 @@ export const alAprobarCambioDeTurno = onDocumentUpdated({ document: "lineas/{lin
   await Promise.all(
     [p.choferId, p.tomadoPor].map((uid) =>
       getMessaging().send({ topic: `chofer-${uid}`, notification: { title: "Cambio de turno aprobado", body: `Tu planilla del ${p.fecha} ya está actualizada.` } }).catch(() => undefined),
+    ),
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// Bolsa de francos: al aprobarla la gerencia, se intercambian las planillas de los dos choferes en esos días.
+// ---------------------------------------------------------------------------------------------
+export const alAprobarFranco = onDocumentUpdated({ document: "lineas/{lineaId}/francos/{id}" }, async (ev) => {
+  const antes = PublicacionFranco.safeParse(ev.data?.before.data());
+  const despues = PublicacionFranco.safeParse(ev.data?.after.data());
+  if (!antes.success || !despues.success) return;
+  const f = despues.data;
+  if (antes.data.estado === "aprobado" || f.estado !== "aprobado" || !f.contraparteId) return;
+  const col = db().collection("lineas").doc(f.lineaId).collection("planillas");
+  const faltan: string[] = [];
+  await db().runTransaction(async (tx) => {
+    const dias = diasDelCambio(f);
+    const pares = await Promise.all(
+      dias.map(async (fecha) => {
+        const refA = col.doc(`${f.choferId}-${fecha}`);
+        const refB = col.doc(`${f.contraparteId}-${fecha}`);
+        const [a, b] = await Promise.all([tx.get(refA), tx.get(refB)]);
+        return { fecha, refA, refB, a: Planilla.safeParse(a.data()), b: Planilla.safeParse(b.data()) };
+      }),
+    );
+    for (const x of pares) {
+      if (!x.a.success || !x.b.success) {
+        faltan.push(x.fecha);
+        continue;
+      }
+      const [na, nb] = intercambiarPlanillas(x.a.data, x.b.data);
+      tx.set(x.refA, na);
+      tx.set(x.refB, nb);
+    }
+    if (faltan.length) tx.update(ev.data!.after.ref, { respuesta: `Aprobado, pero falta una planilla del ${faltan.join(" y ")}: tráfico la tiene que cargar a mano.` });
+  });
+  await auditar(f.lineaId, "franco_aprobado", { franco: f.id, de: f.choferId, con: f.contraparteId, dias: diasDelCambio(f) });
+  await Promise.all(
+    [f.choferId, f.contraparteId].map((uid) =>
+      getMessaging().send({ topic: `chofer-${uid}`, notification: { title: "Franco aprobado", body: `Tus planillas del ${diasDelCambio(f).join(" y ")} ya están actualizadas.` } }).catch(() => undefined),
     ),
   );
 });

@@ -15,3 +15,11 @@ Hablar en español, simple. Dueño: el mismo de Alldoo/Conectar/FC.
   pausa porque no deja cambiar el volumen) y `radio/useMensajesRadio.ts`. Los navegadores exigen un toque previo para sonar.
 - 30/09 "el aviso se tiene que escuchar": los avisos de la empresa (panel › Avisos) también suenan con ding + voz
   (`textoDeAvisoParaLeer`, corta a ~350 letras y manda a Papeles). Mismo hook `useMensajesRadio`, ventana de 15 min.
+- 30/09 el dueño: usar la instancia de AWS "Conectar2-Staging-Quirurgico" (i-0bc4fdcc1add08009) para La Ramal, y
+  después publicarla en Google Play y App Store. Plan propuesto (falta que confirme): servidor propio en la instancia en
+  vez de Firestore; app nativa con Capacitor sobre la misma web; push por FCM (Android) y APNs (iPhone); voz nativa del
+  teléfono para que los mensajes por la radio suenen con la pantalla bloqueada. La instancia NO tiene rol IAM (sin SSM)
+  y el disco (8 GB) está lleno: el dueño tiene que poner `conectar2-ssm-profile` y agrandar el disco.
+- 30/09 BOLSA DE FRANCOS (pedido del dueño): Papeles › Francos (calendario del mes) y panel › Bolsa de francos. Núcleo
+  `francos.ts` (ofrezco/pido, "a cambio de", publicado → acordado → aprobado por gerencia), colección `francos` con reglas,
+  función `alAprobarFranco` que intercambia las planillas. En la demo: francos Carlos domingo, Jorge miércoles, Marcela lunes.

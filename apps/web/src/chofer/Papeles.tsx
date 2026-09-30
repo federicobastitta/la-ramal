@@ -5,6 +5,7 @@ import {
 } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
 import { fechaLinda, hoyISO, plata } from "../compartido/pdf";
+import { BolsaDeFrancos } from "./Francos";
 
 export type DatosPapeles = {
   planillas: Planilla[];
@@ -56,7 +57,7 @@ export function PlanillaDeHoy({ planillas }: { planillas: Planilla[] }) {
   );
 }
 
-type Pantalla = "planillas" | "recibos" | "certificados" | "pedidos" | "comunicados";
+type Pantalla = "planillas" | "francos" | "recibos" | "certificados" | "pedidos" | "comunicados";
 
 export function Papeles(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles; avisar: (s: string) => void }) {
   const [ver, setVer] = useState<Pantalla>("planillas");
@@ -65,6 +66,7 @@ export function Papeles(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles
   const porVencer = p.datos.certificados.filter((c) => nivelVencimiento(c.vence, hoyISO()) !== "al_dia").length;
   const opciones: [Pantalla, string, number][] = [
     ["planillas", "Planillas", 0],
+    ["francos", "Francos", 0],
     ["recibos", "Recibos", sinConformidad],
     ["certificados", "Certificados", porVencer],
     ["pedidos", "Pedidos", p.datos.ofrecidos.length],
@@ -72,7 +74,7 @@ export function Papeles(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles
   ];
   return (
     <>
-      <div className="types" role="tablist" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="types" role="tablist" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
         {opciones.map(([k, t, n]) => (
           <button key={k} role="tab" className="type" aria-pressed={ver === k} onClick={() => setVer(k)} style={{ fontSize: 13, padding: "8px 2px" }}>
             {t}{n > 0 && <span className="chip bad" style={{ marginLeft: 4, padding: "0 6px" }}>{n}</span>}
@@ -80,6 +82,7 @@ export function Papeles(p: { fuente: Fuente; sesion: Sesion; datos: DatosPapeles
         ))}
       </div>
       {ver === "planillas" && <Planillas planillas={p.datos.planillas} />}
+      {ver === "francos" && <BolsaDeFrancos fuente={p.fuente} sesion={p.sesion} planillas={p.datos.planillas} avisar={p.avisar} />}
       {ver === "recibos" && <Recibos {...p} />}
       {ver === "certificados" && <Certificados {...p} />}
       {ver === "pedidos" && <Pedidos {...p} />}
