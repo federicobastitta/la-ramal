@@ -9,3 +9,7 @@ Hablar en español, simple. Dueño: el mismo de Alldoo/Conectar/FC.
 - Colores de marca: azul #14213d y amarillo #f2b705 (el dueño dijo "dejá esos colores"). Nada médico en esta app.
 - No poner "bloqueo en movimiento" (el dueño lo sacó). El truco se juega solo con el coche parado (pedido del dueño).
 - Folleto: https://claude.ai/artifact/Mcwo5VCrUEzpgbwMmVtKr9
+- FUNCIÓN PRINCIPAL (dueño, 30/09): mensajes de la terminal por la radio con «ding» y voz gratis (speechSynthesis del
+  teléfono; Polly quedó como opción paga, no se usa). Núcleo `mensaje-radio.ts`, colección `mensajesRadio` (la crea
+  gestión, la lee la línea, no se edita ni borra), `radio/locutor.ts` (ding con WebAudio, baja la radio; en iPhone la
+  pausa porque no deja cambiar el volumen) y `radio/useMensajesRadio.ts`. Los navegadores exigen un toque previo para sonar.

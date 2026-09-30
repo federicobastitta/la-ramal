@@ -163,6 +163,15 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Mensajes de la terminal por la radio: los manda gestión (tráfico) y los oye toda la línea. No se tocan ni se borran.
+      match /mensajesRadio/{id} {
+        allow read: if deLinea(l);
+        allow create: if gestion(l) && nuevo().lineaId == l && nuevo().id == id
+          && nuevo().texto is string && nuevo().texto.size() > 0 && nuevo().texto.size() <= 280
+          && nuevo().para is string && nuevo().para.size() > 0 && nuevo().para.size() <= 40;
+        allow update, delete: if false;
+      }
+
       // Resumen del día medido por el GPS: lo escribe el celular del chofer; lo lee él y gestión.
       match /jornadas/{id} {
         allow read: if gestion(l) || (chofer(l) && propio());

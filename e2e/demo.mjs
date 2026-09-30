@@ -7,6 +7,14 @@ const navegador = await chromium.launch({ executablePath: process.env.CHROMIUM_P
 const ctx = await navegador.newContext({ geolocation: { latitude: -34.7206, longitude: -58.2546, accuracy: 12 }, permissions: ["geolocation"] });
 const chofer = await ctx.newPage();
 const panel = await ctx.newPage();
+// La voz del celular se reemplaza por una que anota lo que dice (en la prueba no hay parlante).
+await chofer.addInitScript(() => {
+  window.__dichos = [];
+  window.speechSynthesis.speak = (u) => {
+    if (u.text) window.__dichos.push(u.text);
+    setTimeout(() => u.onend?.(new Event("end")), 50);
+  };
+});
 const errores = [];
 for (const p of [chofer, panel]) p.on("pageerror", (e) => errores.push(e.message));
 
@@ -43,8 +51,26 @@ await chofer.getByRole("button", { name: "Cancelar alerta" }).click();
 await chofer.getByText("Alerta cancelada").waitFor();
 await panel.getByText(/CANCELADA BAJO COACCIÓN/).waitFor({ timeout: 5000 });
 
+// Mensaje de la terminal por la radio: el panel lo manda, el celular muestra el cartel y la voz lo lee.
+await panel.getByRole("button", { name: "📻 Mensaje por la radio" }).click();
+await panel.getByLabel("Mensaje").fill("Corte en Mitre y 12 de Octubre, tomen por Rivadavia");
+await panel.getByRole("button", { name: "Enviar por la radio" }).click();
+await panel.getByText("Mensaje enviado a toda la flota").waitFor({ timeout: 5000 });
+await chofer.getByText("Corte en Mitre y 12 de Octubre, tomen por Rivadavia").waitFor({ timeout: 5000 });
+await chofer.waitForFunction(() => window.__dichos.some((t) => t.startsWith("Mensaje de la terminal.")), null, { timeout: 8000 });
+const dichos = await chofer.evaluate(() => window.__dichos);
+// Uno para otro coche no le llega a este.
+await panel.getByLabel("Para").fill("Interno 99");
+await panel.getByLabel("Mensaje").fill("Solo para el 99");
+await panel.getByRole("button", { name: "Enviar por la radio" }).click();
+await panel.getByText("Mensaje enviado al Interno 99").waitFor({ timeout: 5000 });
+await chofer.waitForTimeout(1500);
+if (await chofer.getByText("Solo para el 99").count()) throw new Error("Le llegó un mensaje de otro coche");
+await chofer.screenshot({ path: "e2e/chofer-radio.png" });
+await chofer.getByRole("button", { name: "Cerrar el mensaje" }).click();
+
 await chofer.screenshot({ path: "e2e/chofer.png", fullPage: true });
 await panel.screenshot({ path: "e2e/panel.png", fullPage: true });
 await navegador.close();
 if (errores.length) throw new Error("Errores en la página: " + errores.join(" | "));
-console.log(`OK: reporte en el panel (urgencia alta: ${urgencia > 0}), taller visto por el chofer, pánico confirmado, coacción marcada.`);
+console.log(`OK: reporte en el panel (urgencia alta: ${urgencia > 0}), taller visto por el chofer, pánico confirmado, coacción marcada, mensaje por la radio leído: «${dichos.at(-1)}».`);

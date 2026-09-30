@@ -1,4 +1,4 @@
-import type { AccionPedido, AlertaPanico, Certificado, Comunicado, ConfigRecorrido, Escala, EstadoReporte, Jornada, NuevoReporte, Pedido, Planilla, Recibo, Reporte, Ubicacion } from "@la-ramal/nucleo";
+import type { AccionPedido, AlertaPanico, Certificado, Comunicado, MensajeRadio, ConfigRecorrido, Escala, EstadoReporte, Jornada, NuevoReporte, Pedido, Planilla, Recibo, Reporte, Ubicacion } from "@la-ramal/nucleo";
 
 export type Rol = "chofer" | "trafico" | "taller" | "personal" | "admin" | "delegado";
 
@@ -12,10 +12,10 @@ export type Sesion = {
 };
 
 /** Colecciones de papeles y personal (etapa 2). */
-export type Colecciones = { planillas: Planilla; recibos: Recibo; certificados: Certificado; pedidos: Pedido; comunicados: Comunicado; jornadas: Jornada; configuracion: ConfigRecorrido; escalas: Escala };
+export type Colecciones = { planillas: Planilla; recibos: Recibo; certificados: Certificado; pedidos: Pedido; comunicados: Comunicado; jornadas: Jornada; configuracion: ConfigRecorrido; escalas: Escala; mensajesRadio: MensajeRadio };
 export type NombreColeccion = keyof Colecciones;
-/** Filtro de igualdad (lo único que necesitan las pantallas y lo que las reglas pueden comprobar). */
-export type Filtro = { campo: string; igual: string | boolean };
+/** Filtro de igualdad, o «desde» para un campo numérico (fecha en ms): lo que necesitan las pantallas y las reglas pueden comprobar. */
+export type Filtro = { campo: string; igual: string | boolean } | { campo: string; desde: number };
 export type Persona = { uid: string; nombre: string; rol: Rol };
 
 /** Archivo adjunto todavía en el celular, antes de subirlo. */

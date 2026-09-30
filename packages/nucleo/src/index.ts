@@ -11,3 +11,4 @@ export * from "./paradas";
 export * from "./jornada";
 export * from "./truco";
 export * from "./prode";
+export * from "./mensaje-radio";

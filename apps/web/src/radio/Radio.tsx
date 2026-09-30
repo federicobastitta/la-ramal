@@ -3,6 +3,7 @@ import { buscarEmisoras, EMISORAS, type Banda, type Emisora } from "./emisoras";
 import { useDetenido } from "../dispositivo/detenido";
 import { Futbol, avisoDeMiEquipo, usePartidos } from "./PartidosRadio";
 import { CarrerasRadio, avisoDeCarrera, useCarreras } from "./CarrerasRadio";
+import { registrarRadio } from "./locutor";
 
 const CLAVE_ULTIMA = "la-ramal-radio";
 const leer = () => {
@@ -109,6 +110,12 @@ export function Radio({ demo }: { demo: boolean }) {
     const todas = await encender();
     void tocar(todas.find((e) => e.id === actual) ?? todas[0]!);
   };
+
+  // Los mensajes de la terminal bajan esta radio mientras hablan.
+  useEffect(() => {
+    registrarRadio(audio.current);
+    return () => registrarRadio(null);
+  }, []);
 
   // Controles del Bluetooth del coche y de la pantalla bloqueada.
   useEffect(() => {
