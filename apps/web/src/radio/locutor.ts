@@ -25,10 +25,86 @@ function audio(): AudioContext | null {
   return contexto;
 }
 
+/**
+ * «Tomar el sonido del celular» mientras habla la terminal (dueño, 30/09: «que suspenda todos los audios de ese
+ * celular, que se ponga por encima de todas las aplicaciones de sonido»). Desde una página web se hace con dos cosas:
+ * - iPhone (Safari 17 o más nuevo): la sesión de audio pasa a «transient-solo», que corta el audio de las otras apps
+ *   mientras dura el aviso y después lo devuelve.
+ * - Android (Chrome): el celular le da el sonido a la app que reproduce algo largo; durante el aviso suena un audio
+ *   en silencio de 10 s en bucle, así Spotify, YouTube u otra radio se pausan. Si la radio de LA RAMAL está sonando
+ *   ya tiene el sonido y no hace falta.
+ * Con el celular bloqueado o la app cerrada una página web no puede hacerlo: eso lo va a hacer la app nativa
+ * (Play Store / App Store) pidiendo el «foco de audio» al sistema.
+ */
+let foco: HTMLAudioElement | null = null;
+
+/** WAV de 10 s en silencio (8 kHz, 8 bits, mono) hecho en el momento: no hace falta ningún archivo. */
+function silencio(): string {
+  const n = 8000 * 10;
+  const b = new ArrayBuffer(44 + n);
+  const v = new DataView(b);
+  const txt = (o: number, t: string) => [...t].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  txt(0, "RIFF"); v.setUint32(4, 36 + n, true); txt(8, "WAVE"); txt(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true);
+  v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); txt(36, "data"); v.setUint32(40, n, true);
+  new Uint8Array(b, 44).fill(128);
+  return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+}
+
+function elementoFoco(): HTMLAudioElement | null {
+  if (typeof Audio === "undefined") return null;
+  if (!foco) {
+    foco = new Audio(silencio());
+    foco.loop = true;
+  }
+  return foco;
+}
+
+type SesionAudio = { type: string };
+const sesionAudio = (): SesionAudio | null =>
+  (typeof navigator !== "undefined" && (navigator as unknown as { audioSession?: SesionAudio }).audioSession) || null;
+
+/** Toma el sonido del celular; devuelve con qué soltarlo. */
+async function tomarSonido(): Promise<() => void> {
+  const s = sesionAudio();
+  const tipoAntes = s?.type;
+  try {
+    if (s) s.type = "transient-solo";
+  } catch {
+    /* navegador sin sesión de audio */
+  }
+  const radioSonando = !!radio && !radio.paused;
+  const f = radioSonando ? null : elementoFoco();
+  if (f) await f.play().catch(() => undefined);
+  const ms = typeof navigator !== "undefined" && "mediaSession" in navigator ? navigator.mediaSession : null;
+  const metaAntes = ms?.metadata ?? null;
+  try {
+    if (ms && typeof MediaMetadata !== "undefined") ms.metadata = new MediaMetadata({ title: "📻 Mensaje de la terminal", artist: "LA RAMAL" });
+  } catch {
+    /* sin Media Session */
+  }
+  return () => {
+    f?.pause();
+    try {
+      if (s && tipoAntes) s.type = tipoAntes;
+    } catch {
+      /* nada */
+    }
+    try {
+      if (ms) ms.metadata = metaAntes;
+    } catch {
+      /* nada */
+    }
+  };
+}
+
 /** Se llama en el primer toque de la pantalla: habilita el sonido y la voz para después. */
 export function desbloquear() {
   const c = audio();
   if (c?.state === "suspended") void c.resume();
+  // El iPhone solo deja reproducir más tarde un audio que ya se tocó una vez con un toque de la persona.
+  const f = elementoFoco();
+  if (f) void f.play().then(() => f.pause()).catch(() => undefined);
   if (hayVoz()) {
     const u = new SpeechSynthesisUtterance("");
     u.volume = 0;
@@ -129,11 +205,16 @@ async function conRadioBaja(fn: () => Promise<void>) {
   }
 }
 
-/** Ding + voz, uno atrás del otro (si llegan dos mensajes juntos no se pisan). */
+/** Ding + voz, uno atrás del otro (si llegan dos mensajes juntos no se pisan). Mientras, se toma el sonido del celular. */
 export function anunciar(texto: string): Promise<void> {
   cola = cola.then(() => conRadioBaja(async () => {
-    await ding();
-    await decir(texto);
+    const soltar = await tomarSonido();
+    try {
+      await ding();
+      await decir(texto);
+    } finally {
+      soltar();
+    }
   })).catch(() => undefined);
   return cola;
 }

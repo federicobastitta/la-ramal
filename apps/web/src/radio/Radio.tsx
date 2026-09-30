@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buscarEmisoras, EMISORAS, type Banda, type Emisora } from "./emisoras";
+import { buscarEmisoras, EMISORAS, ordenDeArranque, type Banda, type Emisora } from "./emisoras";
 import { useDetenido } from "../dispositivo/detenido";
 import { Futbol, avisoDeMiEquipo, usePartidos } from "./PartidosRadio";
 import { CarrerasRadio, avisoDeCarrera, useCarreras } from "./CarrerasRadio";
@@ -22,6 +22,28 @@ const guardar = (id: string) => {
 };
 
 type Estado = "apagada" | "conectando" | "sonando" | "error";
+
+/** Da play y espera a que suene de verdad; si en `ms` no suena, la corta (una transmisión puede quedar colgada). */
+function sonarConTope(a: HTMLAudioElement, ms: number): Promise<Arranque> {
+  return new Promise((ok) => {
+    let listo = false;
+    const fin = (r: Arranque) => {
+      if (listo) return;
+      listo = true;
+      clearTimeout(tope);
+      a.removeEventListener("playing", alSonar);
+      a.removeEventListener("error", alFallar);
+      if (r === "sin_senal") a.pause();
+      ok(r);
+    };
+    const alSonar = () => fin("sonando");
+    const alFallar = () => fin("sin_senal");
+    const tope = setTimeout(() => fin("sin_senal"), ms);
+    a.addEventListener("playing", alSonar);
+    a.addEventListener("error", alFallar);
+    a.play().catch((err) => fin(err instanceof DOMException && err.name === "NotAllowedError" ? "bloqueado" : "sin_senal"));
+  });
+}
 
 /** Resultado de prender la radio sola: el navegador puede frenarla hasta que la persona toque la pantalla. */
 export type Arranque = "sonando" | "bloqueado" | "sin_senal";
@@ -123,11 +145,10 @@ export function Radio({ demo }: { demo: boolean }) {
   useEffect(() => {
     arrancar = async (b, preferida) => {
       const todas = await encender();
-      const deLaBanda = todas.filter((e) => e.banda === b && e.stream);
-      const e = deLaBanda.find((x) => x.id === preferida) ?? deLaBanda[0];
       setBanda(b);
       const a = audio.current;
-      if (!e || !a) {
+      const candidatas = ordenDeArranque(todas, b, preferida);
+      if (!a || !candidatas.length) {
         // Sin transmisión por internet: igual queda elegida la AM, así se ve en la barra.
         const fija = todas.find((x) => x.id === preferida) ?? todas.find((x) => x.banda === b);
         if (fija) {
@@ -136,17 +157,22 @@ export function Radio({ demo }: { demo: boolean }) {
         }
         return "sin_senal";
       }
-      setActual(e.id);
-      guardar(e.id);
-      setEstado("conectando");
-      a.src = e.stream!;
-      try {
-        await a.play();
-        return "sonando";
-      } catch (err) {
-        setEstado("apagada");
-        return err instanceof DOMException && err.name === "NotAllowedError" ? "bloqueado" : "sin_senal";
+      // Se prueban de a una: si una radio no arranca en 8 s (caída o colgada) se pasa a la siguiente.
+      for (const e of candidatas.slice(0, 6)) {
+        setActual(e.id);
+        guardar(e.id);
+        setBanda(e.banda);
+        setEstado("conectando");
+        a.src = e.stream!;
+        const r = await sonarConTope(a, 8_000);
+        if (r === "sonando" || r === "bloqueado") {
+          if (r === "bloqueado") setEstado("apagada");
+          return r;
+        }
       }
+      a.pause();
+      setEstado("error");
+      return "sin_senal";
     };
     return () => {
       arrancar = null;
