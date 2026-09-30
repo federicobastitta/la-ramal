@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { MensajeRadio } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
 import { arrancarRadio } from "../radio/Radio";
-import { desbloquear } from "../radio/locutor";
+import { desbloquear, despertarRadio } from "../radio/locutor";
 
 /** Lo que dice la terminal en la demo (pedido del dueño, 30/09). */
 export const AVISO_DEMO = "Cuando termine el recorrido, pase por el taller.";
@@ -20,13 +20,14 @@ function radioAM() {
 
 /**
  * Demo de GitHub (pedido del dueño, 30/09/2026): la app arranca con una radio AM sonando y a los 5 segundos la terminal
- * manda un mensaje por la radio (ding + voz). Los navegadores no dejan sonar nada hasta el primer toque: si lo frenan,
- * se muestra un botón grande y con ese único toque arranca todo. Con ?sinArranque en la dirección no hace nada (pruebas).
+ * manda un mensaje por la radio (ding + voz). Con ?sinArranque en la dirección no hace nada (pruebas).
  * Siempre (dueño, 30/09): si la AM preferida no transmite se prueba otra; si ninguna suena o tarda más de 10 s,
  * el mensaje de la terminal sale igual.
+ * Sin cartel (dueño, 30/09: «este cartel que no salga»): el iPhone y la mayoría de los navegadores no dejan sonar nada
+ * hasta que la persona toca la pantalla. En ese caso no se muestra nada encima: el primer toque en cualquier lado
+ * (una pestaña, un botón, la pantalla) prende la radio y a los 5 s llega el mensaje. La barra de la radio lo dice chiquito.
  */
 export function ArranqueDemo({ fuente, sesion }: { fuente: Fuente; sesion: Sesion }) {
-  const [pedirToque, setPedirToque] = useState(false);
   const hecho = useRef(false);
   const apagado = fuente.modo !== "demo" || new URLSearchParams(location.search).has("sinArranque");
 
@@ -40,30 +41,28 @@ export function ArranqueDemo({ fuente, sesion }: { fuente: Fuente; sesion: Sesio
   useEffect(() => {
     if (apagado || hecho.current) return;
     hecho.current = true;
+    let quitar = () => {};
     void radioAM().then((r) => {
-      if (r === "bloqueado") setPedirToque(true);
-      else avisoALos5(); // sonando, sin señal o tardando: el mensaje sale igual
+      if (r !== "bloqueado") {
+        avisoALos5(); // sonando, sin señal o tardando: el mensaje sale igual
+        return;
+      }
+      // Frenado hasta el primer toque: se espera cualquier toque, sin cartel.
+      const alTocar = () => {
+        quitar();
+        despertarRadio(); // el iPhone exige dar play dentro del mismo toque
+        desbloquear();
+        void radioAM().finally(avisoALos5);
+      };
+      quitar = () => {
+        window.removeEventListener("pointerdown", alTocar, true);
+        window.removeEventListener("keydown", alTocar, true);
+      };
+      window.addEventListener("pointerdown", alTocar, { capture: true, once: true });
+      window.addEventListener("keydown", alTocar, { capture: true, once: true });
     });
+    return () => quitar();
   }, []);
 
-  if (!pedirToque) return null;
-  return (
-    // Cualquier toque en la pantalla arranca (no hace falta acertarle al botón).
-    <div
-      className="arranque-demo"
-      role="dialog"
-      aria-label="Empezar la demo"
-      onClick={() => {
-        desbloquear();
-        setPedirToque(false);
-        void radioAM().finally(avisoALos5);
-      }}
-    >
-      <button className="arranque-boton" type="button">
-        <span className="arranque-icono">▶</span>
-        <b>Empezar</b>
-        <span>Suena la radio AM y a los 5 segundos llega un mensaje de la terminal</span>
-      </button>
-    </div>
-  );
+  return null;
 }

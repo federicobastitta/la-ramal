@@ -112,6 +112,11 @@ export function desbloquear() {
   }
 }
 
+/** Da play a la radio de la app en el mismo toque de la persona (el iPhone no deja hacerlo después, en diferido). */
+export function despertarRadio() {
+  if (radio && radio.src && radio.paused) void radio.play().catch(() => undefined);
+}
+
 /** Engancha `desbloquear` al primer toque o tecla. Devuelve con qué soltarlo. */
 export function desbloquearAlPrimerToque(): () => void {
   const fn = () => {
