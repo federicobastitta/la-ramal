@@ -25,4 +25,5 @@ Hablar en español, simple. Dueño: el mismo de Alldoo/Conectar/FC.
   función `alAprobarFranco` que intercambia las planillas. En la demo: francos Carlos domingo, Jorge miércoles, Marcela lunes.
 - 30/09 DEMO (pedido del dueño): la app del chofer en modo demo arranca con una AM (Radio Mitre 790 o la primera AM que
   transmita) y a los 10 s (antes 5: al arrancar se juntaba todo) la terminal manda "Cuando termine el recorrido, pase por el taller." (`chofer/ArranqueDemo.tsx`).
-  Si el navegador frena el sonido sin toque, sale un botón grande "Empezar". El e2e abre con `?sinArranque`.
+  Botón "Empezar" SIEMPRE al abrir (dueño 30/09: sin él no sonaba; Chrome/iPhone callan la voz sin un toque aunque
+  la radio arranque sola). Los 10 s se cuentan desde el toque. El e2e abre con `?sinArranque`.
