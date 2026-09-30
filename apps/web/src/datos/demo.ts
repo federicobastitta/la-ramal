@@ -1,4 +1,4 @@
-import { hashearPin, intercambiarPlanillas, transicionPedido, verificarPin, type AccionPedido, type AlertaPanico, type Comunicado, type EstadoReporte, type HashPin, type Jornada, type NuevoReporte, type Pedido, type Planilla, type Reporte, type Ubicacion } from "@la-ramal/nucleo";
+import { diasDelCambio, hashearPin, intercambiarPlanillas, transicionFranco, transicionPedido, verificarPin, type AccionFranco, type AccionPedido, type PublicacionFranco, type AlertaPanico, type Comunicado, type EstadoReporte, type HashPin, type Jornada, type NuevoReporte, type Pedido, type Planilla, type Reporte, type Ubicacion } from "@la-ramal/nucleo";
 import { clasificarPorReglas } from "@la-ramal/nucleo";
 import { abrir, idb } from "./idb";
 import type { ArchivoLocal, Colecciones, Filtro, Fuente, NombreColeccion, Persona, Sesion } from "./fuente";
@@ -180,6 +180,32 @@ export class FuenteDemo implements Fuente {
       }
     }
     await this.actualizar(lineaId, "pedidos", p.id, cambios);
+  }
+
+  async accionFranco(lineaId: string, p: PublicacionFranco, quien: Sesion, accion: AccionFranco, respuesta?: string) {
+    const actual = (await idb.leer<PublicacionFranco>("docs", `francos/${p.id}`)) ?? p;
+    const t = transicionFranco(actual, { uid: quien.uid, rol: quien.rol }, accion);
+    if (!t.ok) throw new Error(t.motivo);
+    const cambios: Partial<PublicacionFranco> = { estado: t.estado, actualizadoEn: Date.now(), ...(respuesta ? { respuesta } : {}) };
+    if (accion === "tomar") Object.assign(cambios, { contraparteId: quien.uid, contraparteNombre: quien.nombre });
+    if (accion === "soltar") Object.assign(cambios, { contraparteId: undefined, contraparteNombre: undefined });
+    // En Firebase esto lo hace la función alAprobarFranco; en la demo, acá mismo.
+    if (accion === "aprobar" && actual.contraparteId) {
+      const faltan: string[] = [];
+      for (const fecha of diasDelCambio(actual)) {
+        const a = await idb.leer<Planilla>("docs", `planillas/${actual.choferId}-${fecha}`);
+        const b = await idb.leer<Planilla>("docs", `planillas/${actual.contraparteId}-${fecha}`);
+        if (!a || !b) {
+          faltan.push(fecha);
+          continue;
+        }
+        const [na, nb] = intercambiarPlanillas(a, b);
+        await idb.poner("docs", `planillas/${na.id}`, na);
+        await idb.poner("docs", `planillas/${nb.id}`, nb);
+      }
+      if (faltan.length) cambios.respuesta = `Aprobado, pero falta una planilla del ${faltan.join(" y ")}: tráfico la tiene que cargar a mano.`;
+    }
+    await this.actualizar(lineaId, "francos", p.id, cambios);
   }
 
   async guardarJornada(j: Jornada) {

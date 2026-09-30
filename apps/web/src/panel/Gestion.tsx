@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Escala,
   NOMBRE_CERTIFICADO, NOMBRE_PEDIDO, conformidadVigente, exigenciaPorRecorrido, leerVueltas, nivelVencimiento, sha256Hex,
-  MensajeRadio, textoDeAvisoParaLeer, textoParaLeer,
+  MensajeRadio, NOMBRE_ESTADO_FRANCO, diasDelCambio, resumenFranco, textoDeAvisoParaLeer, textoParaLeer, type PublicacionFranco,
   type Certificado, type Comunicado, type Jornada, type Pedido, type Planilla, type Recibo,
 } from "@la-ramal/nucleo";
 import type { Fuente, Sesion } from "../datos";
@@ -13,7 +13,7 @@ import { anunciar, vozDisponible } from "../radio/locutor";
 
 type P = { fuente: Fuente; sesion: Sesion; avisar: (s: string) => void };
 
-function useColeccion<K extends "planillas" | "recibos" | "certificados" | "pedidos" | "comunicados" | "jornadas" | "escalas">(p: P, col: K) {
+function useColeccion<K extends "planillas" | "recibos" | "certificados" | "pedidos" | "comunicados" | "jornadas" | "escalas" | "francos">(p: P, col: K) {
   const [xs, setXs] = useState<import("../datos/fuente").Colecciones[K][]>([]);
   useEffect(() => p.fuente.escuchar(p.sesion.lineaId, col, [], setXs), [p.fuente, p.sesion, col]);
   return xs;
@@ -279,6 +279,80 @@ export function Planillas(p: P) {
               ))}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+/** Bolsa de francos: lo que dos choferes acordaron espera acá la aprobación de la gerencia; al aprobar se cambian las planillas. */
+export function Francos(p: P) {
+  const francos = useColeccion(p, "francos");
+  const planillas = useColeccion(p, "planillas");
+  const [ocupado, setOcupado] = useState(false);
+  const turno = (choferId: string, fecha: string) => {
+    const x = planillas.find((y) => y.choferId === choferId && y.fecha === fecha);
+    return !x ? "sin planilla cargada" : x.franco ? "franco" : `${x.cocheId} · ${x.vueltas[0]?.sale}–${x.vueltas.at(-1)?.llega}`;
+  };
+  const responder = async (f: PublicacionFranco, accion: "aprobar" | "rechazar") => {
+    const motivo = accion === "rechazar" ? window.prompt("¿Por qué se rechaza? (lo ven los choferes)") ?? undefined : undefined;
+    if (accion === "rechazar" && motivo === undefined) return;
+    setOcupado(true);
+    try {
+      await p.fuente.accionFranco(p.sesion.lineaId, f, p.sesion, accion, motivo?.trim() || undefined);
+      p.avisar(accion === "aprobar" ? "Aprobado: las planillas quedaron cambiadas" : "Rechazado");
+    } catch (e) {
+      p.avisar(e instanceof Error ? e.message : "No se pudo");
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const orden = (a: PublicacionFranco, b: PublicacionFranco) => a.fecha.localeCompare(b.fecha);
+  const paraAprobar = francos.filter((f) => f.estado === "acordado").sort(orden);
+  const enBolsa = francos.filter((f) => f.estado === "publicado").sort(orden);
+  const resueltos = francos.filter((f) => f.estado === "aprobado" || f.estado === "rechazado").sort((a, b) => (b.actualizadoEn ?? 0) - (a.actualizadoEn ?? 0)).slice(0, 20);
+  return (
+    <div className="panel">
+      <div className="col">
+        <div className="card">
+          <div className="row"><h3>Para aprobar</h3><span className={`chip ${paraAprobar.length ? "warn" : "ok"}`}>{paraAprobar.length}</span></div>
+          <div className="muted">Dos choferes ya se pusieron de acuerdo. Al aprobar, las planillas de esos días se intercambian solas.</div>
+          {paraAprobar.length === 0 && <div className="muted">No hay francos esperando aprobación.</div>}
+          {paraAprobar.map((f) => (
+            <div className="it" key={f.id} style={{ display: "block" }}>
+              <div><b>{resumenFranco(f, fechaLinda)}</b></div>
+              <div>Lo tomó <b>{f.contraparteNombre}</b></div>
+              {f.detalle && <div className="muted">«{f.detalle}»</div>}
+              {diasDelCambio(f).map((d) => (
+                <div key={d} className="muted">{fechaLinda(d)}: {f.choferNombre} {turno(f.choferId, d)} · {f.contraparteNombre} {turno(f.contraparteId ?? "", d)}</div>
+              ))}
+              <div className="row" style={{ gap: 8, justifyContent: "flex-start", marginTop: 6 }}>
+                <button className="btn yellow" disabled={ocupado} onClick={() => void responder(f, "aprobar")}>Aprobar</button>
+                <button className="btn" disabled={ocupado} onClick={() => void responder(f, "rechazar")}>Rechazar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="col">
+        <div className="card">
+          <h3>En la bolsa</h3>
+          {enBolsa.length === 0 ? <div className="muted">Nadie está ofreciendo ni pidiendo francos ahora.</div> : enBolsa.map((f) => (
+            <div className="it" key={f.id} style={{ display: "block" }}>
+              <div>{resumenFranco(f, fechaLinda)}</div>
+              <button className="btn" disabled={ocupado} onClick={() => void responder(f, "rechazar")}>Rechazar</button>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <h3>Resueltos</h3>
+          {resueltos.length === 0 ? <div className="muted">Todavía nada.</div> : resueltos.map((f) => (
+            <div className="it" key={f.id} style={{ display: "block" }}>
+              <div className="row"><span>{resumenFranco(f, fechaLinda)}{f.contraparteNombre ? ` · con ${f.contraparteNombre}` : ""}</span><span className={`chip ${f.estado === "aprobado" ? "ok" : "bad"}`}>{NOMBRE_ESTADO_FRANCO[f.estado]}</span></div>
+              {f.respuesta && <div className="muted">{f.respuesta}</div>}
+            </div>
+          ))}
         </div>
       </div>
     </div>

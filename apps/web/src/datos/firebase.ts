@@ -22,12 +22,12 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, MensajeRadio, Escala, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
+import { AlertaPanico, Certificado, Comunicado, ConfigRecorrido, MensajeRadio, PublicacionFranco, transicionFranco, type AccionFranco, Escala, Jornada, Pedido, Planilla, Recibo, Reporte, transicionPedido, type AccionPedido, type EstadoReporte, type NuevoReporte, type Ubicacion } from "@la-ramal/nucleo";
 import { ErrorPermanente } from "@la-ramal/nucleo";
 import type { ArchivoLocal, Colecciones, Filtro, Fuente, NombreColeccion, Persona, Rol, Sesion } from "./fuente";
 import type { ZodType } from "zod";
 
-const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido, escalas: Escala, mensajesRadio: MensajeRadio } as never;
+const ESQUEMAS: { [K in NombreColeccion]: ZodType<Colecciones[K]> } = { planillas: Planilla, recibos: Recibo, certificados: Certificado, pedidos: Pedido, comunicados: Comunicado, jornadas: Jornada, configuracion: ConfigRecorrido, escalas: Escala, mensajesRadio: MensajeRadio, francos: PublicacionFranco } as never;
 
 /**
  * Fuente real: Firestore (con caché local persistente, así la app abre y muestra datos sin señal),
@@ -206,6 +206,16 @@ export class FuenteFirebase implements Fuente {
     if (accion === "soltar") Object.assign(cambios, { tomadoPor: deleteField(), tomadoPorNombre: deleteField() });
     // El intercambio de planillas al aprobar un cambio de turno lo hace la función alAprobarCambioDeTurno.
     await updateDoc(doc(this.db, "lineas", lineaId, "pedidos", p.id), cambios);
+  }
+
+  async accionFranco(lineaId: string, p: PublicacionFranco, quien: Sesion, accion: AccionFranco, respuesta?: string) {
+    const t = transicionFranco(p, { uid: quien.uid, rol: quien.rol }, accion);
+    if (!t.ok) throw new Error(t.motivo);
+    const cambios: Record<string, unknown> = { estado: t.estado, actualizadoEn: Date.now(), ...(respuesta ? { respuesta } : {}) };
+    if (accion === "tomar") Object.assign(cambios, { contraparteId: quien.uid, contraparteNombre: quien.nombre });
+    if (accion === "soltar") Object.assign(cambios, { contraparteId: deleteField(), contraparteNombre: deleteField() });
+    // El intercambio de planillas al aprobar lo hace la función alAprobarFranco.
+    await updateDoc(doc(this.db, "lineas", lineaId, "francos", p.id), cambios);
   }
 
   async marcarLeido(lineaId: string, id: string, uid: string) {

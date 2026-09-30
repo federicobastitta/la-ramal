@@ -1,4 +1,4 @@
-import type { AccionPedido, AlertaPanico, Certificado, Comunicado, MensajeRadio, ConfigRecorrido, Escala, EstadoReporte, Jornada, NuevoReporte, Pedido, Planilla, Recibo, Reporte, Ubicacion } from "@la-ramal/nucleo";
+import type { AccionFranco, AccionPedido, AlertaPanico, PublicacionFranco, Certificado, Comunicado, MensajeRadio, ConfigRecorrido, Escala, EstadoReporte, Jornada, NuevoReporte, Pedido, Planilla, Recibo, Reporte, Ubicacion } from "@la-ramal/nucleo";
 
 export type Rol = "chofer" | "trafico" | "taller" | "personal" | "admin" | "delegado";
 
@@ -12,7 +12,7 @@ export type Sesion = {
 };
 
 /** Colecciones de papeles y personal (etapa 2). */
-export type Colecciones = { planillas: Planilla; recibos: Recibo; certificados: Certificado; pedidos: Pedido; comunicados: Comunicado; jornadas: Jornada; configuracion: ConfigRecorrido; escalas: Escala; mensajesRadio: MensajeRadio };
+export type Colecciones = { planillas: Planilla; recibos: Recibo; certificados: Certificado; pedidos: Pedido; comunicados: Comunicado; jornadas: Jornada; configuracion: ConfigRecorrido; escalas: Escala; mensajesRadio: MensajeRadio; francos: PublicacionFranco };
 export type NombreColeccion = keyof Colecciones;
 /** Filtro de igualdad, o «desde» para un campo numérico (fecha en ms): lo que necesitan las pantallas y las reglas pueden comprobar. */
 export type Filtro = { campo: string; igual: string | boolean } | { campo: string; desde: number };
@@ -55,6 +55,8 @@ export interface Fuente {
   /** Aplica una acción sobre un pedido (tomar, aprobar, entregar…). Valida con transicionPedido del núcleo. */
   accionPedido(lineaId: string, p: Pedido, quien: Sesion, accion: AccionPedido, extra?: { respuesta?: string; rutaRespuesta?: string }): Promise<void>;
   marcarLeido(lineaId: string, comunicadoId: string, uid: string): Promise<void>;
+  /** Bolsa de francos: tomar, soltar, aprobar, rechazar o cancelar (valida con transicionFranco del núcleo). Al aprobar se intercambian las planillas. */
+  accionFranco(lineaId: string, p: PublicacionFranco, quien: Sesion, accion: AccionFranco, respuesta?: string): Promise<void>;
   /** Crea o reemplaza el resumen del día que midió el GPS. */
   guardarJornada(j: Jornada): Promise<void>;
 }

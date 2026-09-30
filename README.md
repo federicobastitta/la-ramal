@@ -39,6 +39,9 @@ Esta primera versión (MVP) trae:
   - demoras por vuelta, horarios pico, días más convenientes y sectores más trabados;
   - índice de exigencia con fórmula pública, para compartir.
 - **Panel:** Personal, Planillas (se pegan desde Excel), Avisos y **exigencia por recorrido y franja horaria**.
+- **Bolsa de francos:** un calendario donde el chofer ofrece su franco o pide uno.
+  - Lo toma un compañero que ese día trabaja o tiene franco, según el caso, y puede tener un día de devolución.
+  - La gerencia lo aprueba en el panel y las planillas de esos días se intercambian solas.
 - Falta: Compañeros (truco en vivo, prode, calendario, cumpleaños) y el coche (revisión antes de salir).
 
 ## Probarla ya (modo demo, sin servidor)

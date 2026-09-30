@@ -173,3 +173,18 @@ input[type=text],input[type=password],textarea,select{font:inherit;color:var(--f
 .partido{border-radius:10px;padding:8px 10px;background:var(--bg)}
 .partido.mio{background:var(--soft-warn);border-left:4px solid var(--accent)}
 .partido.vivo .en-vivo{background:var(--bad);color:#fff;border-radius:6px;padding:0 6px;font-size:11px;font-weight:800;letter-spacing:.5px}
+
+/* ---- Bolsa de francos: calendario ---- */
+.calendario{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-cab{text-align:center;font-size:12px;font-weight:700;color:var(--muted,#6b7280)}
+.cal-dia{position:relative;min-height:52px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:inherit;padding:4px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;font:inherit}
+.cal-dia.fuera{opacity:.4}
+.cal-dia.hoy{border-color:var(--navy);border-width:2px}
+.cal-dia.elegido{background:var(--navy);color:var(--on-navy)}
+.cal-dia.franco:not(.elegido){background:color-mix(in srgb,var(--accent) 25%,var(--card))}
+.cal-num{font-weight:700;font-size:14px}
+.cal-f{position:absolute;top:4px;right:5px;font-size:11px;font-weight:800;background:var(--accent);color:var(--on-accent);border-radius:6px;padding:0 4px}
+.cal-marcas{display:flex;gap:3px}
+.cal-ofrecen,.cal-piden{display:inline-block;min-width:16px;text-align:center;font-size:11px;font-weight:800;border-radius:8px;padding:0 4px;color:#fff}
+.cal-ofrecen{background:#15803d}
+.cal-piden{background:var(--coral)}

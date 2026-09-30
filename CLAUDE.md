@@ -20,3 +20,6 @@ Hablar en español, simple. Dueño: el mismo de Alldoo/Conectar/FC.
   vez de Firestore; app nativa con Capacitor sobre la misma web; push por FCM (Android) y APNs (iPhone); voz nativa del
   teléfono para que los mensajes por la radio suenen con la pantalla bloqueada. La instancia NO tiene rol IAM (sin SSM)
   y el disco (8 GB) está lleno: el dueño tiene que poner `conectar2-ssm-profile` y agrandar el disco.
+- 30/09 BOLSA DE FRANCOS (pedido del dueño): Papeles › Francos (calendario del mes) y panel › Bolsa de francos. Núcleo
+  `francos.ts` (ofrezco/pido, "a cambio de", publicado → acordado → aprobado por gerencia), colección `francos` con reglas,
+  función `alAprobarFranco` que intercambia las planillas. En la demo: francos Carlos domingo, Jorge miércoles, Marcela lunes.

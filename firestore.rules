@@ -163,6 +163,31 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Bolsa de francos: el chofer ofrece o pide; un compañero lo toma; la gerencia aprueba (la función cambia las planillas).
+      match /francos/{id} {
+        allow read: if deLinea(l);
+        allow create: if chofer(l) && nuevo().choferId == request.auth.uid && nuevo().lineaId == l && nuevo().id == id
+          && nuevo().estado == 'publicado' && nuevo().tipo in ['ofrezco', 'pido']
+          && !nuevo().keys().hasAny(['contraparteId', 'contraparteNombre', 'respuesta']);
+        allow update: if
+          // Un compañero lo toma.
+          (chofer(l) && !propio() && resource.data.estado == 'publicado'
+            && nuevo().estado == 'acordado' && nuevo().contraparteId == request.auth.uid
+            && cambia().hasOnly(['estado', 'contraparteId', 'contraparteNombre', 'actualizadoEn']))
+          // El que lo tomó lo suelta.
+          || (chofer(l) && resource.data.get('contraparteId', '') == request.auth.uid && resource.data.estado == 'acordado'
+            && nuevo().estado == 'publicado' && !nuevo().keys().hasAny(['contraparteId', 'contraparteNombre'])
+            && cambia().hasOnly(['estado', 'contraparteId', 'contraparteNombre', 'actualizadoEn']))
+          // Quien lo publicó lo cancela antes de que responda la gerencia.
+          || (chofer(l) && propio() && resource.data.estado in ['publicado', 'acordado']
+            && nuevo().estado == 'cancelado' && cambia().hasOnly(['estado', 'actualizadoEn']))
+          // La gerencia aprueba (solo si ya está acordado) o rechaza.
+          || (gestion(l) && cambia().hasOnly(['estado', 'respuesta', 'actualizadoEn'])
+            && ((resource.data.estado == 'acordado' && nuevo().estado == 'aprobado')
+              || (resource.data.estado in ['publicado', 'acordado'] && nuevo().estado == 'rechazado')));
+        allow delete: if false;
+      }
+
       // Mensajes de la terminal por la radio: los manda gestión (tráfico) y los oye toda la línea. No se tocan ni se borran.
       match /mensajesRadio/{id} {
         allow read: if deLinea(l);
